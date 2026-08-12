@@ -1,0 +1,53 @@
+/**
+ * SearchCatalogService 응답의 RawSeoulCatalogItem을 내부 NormalizedDataset으로 변환한다.
+ */
+
+import type { NormalizedDataset, RawSeoulCatalogItem, DatasetType } from "../types/index.js";
+
+/** SRV_TYPE(콤마 구분 문자열)에 "Api"가 포함되면 API형으로 판정 — 가장 신뢰도 높은 판별 기준 */
+function resolveType(raw: RawSeoulCatalogItem): DatasetType {
+  const types = raw.srvType
+    .split(",")
+    .map((t) => t.trim().toLowerCase())
+    .filter(Boolean);
+
+  if (types.includes("api")) return "API";
+  if (types.includes("file")) return "FILE";
+  return "UNKNOWN";
+}
+
+let idCounter = 0;
+
+export function normalizeDataset(raw: RawSeoulCatalogItem): NormalizedDataset {
+  return {
+    id: raw.infId || `gen-${++idCounter}`,
+    title: raw.infNm.trim() || "제목 없음",
+    provider: raw.mngOrganName.trim() || "미상",
+    type: resolveType(raw),
+    description: "",
+    updateCycle: raw.chngLoadNm || "미확인",
+    lastUpdated: raw.dataLtNm || "",
+    detailUrl: raw.shortUrl || "https://data.seoul.go.kr",
+    // 소분류(정책분야)를 태그처럼 활용해 도메인 매칭 점수에 반영
+    tags: raw.mapCateNm ? [raw.mapCateNm] : [],
+    division: raw.ditcNm || "",
+    _raw: raw,
+  };
+}
+
+export function normalizeDatasets(items: RawSeoulCatalogItem[]): NormalizedDataset[] {
+  return items.map(normalizeDataset);
+}
+
+/** 중복 제목 제거 (같은 제목 중 첫 번째만 유지) */
+export function deduplicateByTitle(
+  datasets: NormalizedDataset[]
+): NormalizedDataset[] {
+  const seen = new Set<string>();
+  return datasets.filter((d) => {
+    const key = d.title.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
