@@ -301,6 +301,8 @@ export function scoreAndRank(
         brm: d.brm,
         organization: d.organization,
         scoreBreakdown: computeScoreBreakdown(d, score, ctx),
+        lastUpdated: d.lastUpdated || undefined,
+        department: d._raw.mngStationName?.trim() || undefined,
       } satisfies Recommendation;
     })
     .filter((rec) => rec.score >= MIN_SCORE) // 관련 없는 결과 제거

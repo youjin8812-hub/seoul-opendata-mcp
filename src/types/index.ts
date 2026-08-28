@@ -126,6 +126,10 @@ export interface Recommendation {
   organization?: OrganizationClassification;
   /** 질문 관련도·데이터 활용도 분리 점수 — 신규 필드 (기존 legacy score는 그대로 유지) */
   scoreBreakdown?: ScoreBreakdown;
+  /** 최종갱신일자 (YYYY-MM-DD) — 신규 필드 */
+  lastUpdated?: string;
+  /** 제공부서명 — 신규 필드 */
+  department?: string;
 }
 
 /** 관련도·활용도 분리 점수 */
