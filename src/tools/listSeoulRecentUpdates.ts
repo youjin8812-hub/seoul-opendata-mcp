@@ -55,6 +55,8 @@ export async function listSeoulRecentUpdates(
       updateCycle: d.updateCycle,
       lastUpdated: d.lastUpdated,
       detailUrl: d.detailUrl,
+      brm: d.brm,
+      organization: d.organization,
     })),
     totalMatchCount: totalCount,
     ...(isPartialSample && {

@@ -7,6 +7,8 @@ import type { SearchInput, SearchOutput } from "../types/index.js";
 import { searchSeoulCatalog, getServiceKey } from "../services/seoulCatalogService.js";
 import { MemoryCache, normalizeCacheKey } from "../cache/memoryCache.js";
 import { matchesDivision } from "../utils/divisionMatch.js";
+import { classifyBrm } from "../classification/brmCategory.js";
+import { classifyOrganization } from "../classification/organizationType.js";
 
 const searchCache = new MemoryCache<SearchOutput>(3 * 60 * 1000);
 
@@ -44,6 +46,8 @@ export async function searchSeoulDatasetsForTool(
         .join(" · "),
       provider: item.mngOrganName,
       detailUrl: item.shortUrl,
+      brm: classifyBrm(item),
+      organization: classifyOrganization(item),
     })),
     totalMatchCount: totalCount,
   };
