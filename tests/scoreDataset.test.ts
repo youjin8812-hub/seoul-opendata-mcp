@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { scoreAndRank } from "../src/ranking/scoreDataset.js";
+import { scoreAndRank, computeScoreBreakdown } from "../src/ranking/scoreDataset.js";
 import type { NormalizedDataset } from "../src/types/index.js";
 
 function makeDataset(overrides: Partial<NormalizedDataset>): NormalizedDataset {
@@ -14,6 +14,14 @@ function makeDataset(overrides: Partial<NormalizedDataset>): NormalizedDataset {
     detailUrl: "https://example.com",
     tags: [],
     division: "서울시(본청)",
+    brm: { primary: null, secondary: null, code: null, source: "unclassified", confidence: "low" },
+    organization: {
+      type: "headquarters",
+      label: "서울시 본청",
+      organizationName: "테스트기관",
+      source: "raw_division",
+      confidence: "high",
+    },
     _raw: {
       infId: "OA-0",
       infNm: "테스트 데이터셋",
@@ -93,5 +101,75 @@ describe("scoreAndRank", () => {
     for (let i = 1; i < ranked.length; i++) {
       expect(ranked[i - 1]!.score).toBeGreaterThanOrEqual(ranked[i]!.score);
     }
+  });
+
+  it("scoreBreakdown이 legacy score와 별개로 함께 반환된다", () => {
+    const datasets = [
+      makeDataset({ id: "1", title: "축제 API", type: "API", description: "축제 행사 정보" }),
+    ];
+    const ctx = { keywords: ["축제"], apiOnly: false, realtimePreferred: false };
+    const ranked = scoreAndRank(datasets, ctx);
+
+    expect(ranked[0]!.scoreBreakdown).toBeDefined();
+    expect(ranked[0]!.scoreBreakdown!.legacyScore).toBe(ranked[0]!.score);
+    expect(ranked[0]!.scoreBreakdown!.relevanceScore).toBeGreaterThan(0);
+    expect(ranked[0]!.scoreBreakdown!.qualityScore).toBeGreaterThan(0);
+  });
+
+  it("brm/organization 분류결과가 Recommendation에 그대로 전달된다", () => {
+    const datasets = [
+      makeDataset({
+        id: "1",
+        title: "축제 API",
+        type: "API",
+        brm: { primary: "문화/관광", secondary: null, code: null, source: "catalog_map_category", confidence: "high" },
+      }),
+    ];
+    const ctx = { keywords: ["축제"], apiOnly: false, realtimePreferred: false };
+    const ranked = scoreAndRank(datasets, ctx);
+
+    expect(ranked[0]!.brm?.primary).toBe("문화/관광");
+    expect(ranked[0]!.organization?.type).toBe("headquarters");
+  });
+});
+
+describe("computeScoreBreakdown", () => {
+  it("제공기관 필터가 적용되면 관련도 점수에 반영된다", () => {
+    const dataset = makeDataset({ title: "테스트" });
+    const ctx = { keywords: [], apiOnly: false, realtimePreferred: false, orgFilterApplied: true };
+    const breakdown = computeScoreBreakdown(dataset, 20, ctx);
+
+    expect(breakdown.legacyScore).toBe(20);
+    expect(breakdown.relevanceReasons.some((r) => r.includes("제공기관"))).toBe(true);
+  });
+
+  it("메타정보가 풍부한 데이터셋이 더 높은 활용도 점수를 받는다", () => {
+    const sparse = makeDataset({ title: "빈약한 데이터" });
+    const rich = makeDataset({
+      title: "풍부한 데이터",
+      _raw: {
+        infId: "OA-1",
+        infNm: "풍부한 데이터",
+        cateNm: "공공데이터",
+        ditcNm: "서울시(본청)",
+        mapCateNm: "교통",
+        mngOrganName: "서울시",
+        mngStationName: "교통정책과",
+        linkDesc: "",
+        linkInfo: "",
+        managerName: "홍길동",
+        managerPhone: "02-000-0000",
+        chngLoadNm: "일간",
+        dataLtNm: "2026-08-01",
+        srvType: "Api",
+        shortUrl: "https://data.seoul.go.kr/dataList/OA-1/S/1/datasetView.do",
+      },
+    });
+    const ctx = { keywords: [], apiOnly: false, realtimePreferred: false };
+
+    const sparseBreakdown = computeScoreBreakdown(sparse, 0, ctx);
+    const richBreakdown = computeScoreBreakdown(rich, 0, ctx);
+
+    expect(richBreakdown.qualityScore).toBeGreaterThan(sparseBreakdown.qualityScore);
   });
 });

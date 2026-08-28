@@ -12,7 +12,8 @@
  * apiOnly=true 시 API 외 타입은 결과에서 제거된다.
  */
 
-import type { NormalizedDataset, Recommendation, ScoreContext } from "../types/index.js";
+import type { NormalizedDataset, Recommendation, ScoreBreakdown, ScoreContext } from "../types/index.js";
+import { RELEVANCE_WEIGHTS, QUALITY_WEIGHTS } from "../config/scoringConfig.js";
 
 // ─── 업데이트 주기 점수 (0~10) ────────────────────────────────────────────────
 
@@ -124,6 +125,139 @@ function buildReason(dataset: NormalizedDataset, keywords: string[]): string {
   return parts.join(". ") + ".";
 }
 
+// ─── 관련도·활용도 분리 점수 ──────────────────────────────────────────────────
+// legacy score(위 서브함수들)를 재사용하되, 별도 배점(scoringConfig.ts)으로
+// "질문 관련도"와 "데이터 활용도"를 분리해 계산한다. legacy 점수·정렬에는 영향 없음.
+
+function relevanceBreakdown(
+  dataset: NormalizedDataset,
+  keywords: string[],
+  realtimePreferred: boolean,
+  hasOrgFilter: boolean
+): { score: number; reasons: string[] } {
+  const reasons: string[] = [];
+  let score = 0;
+
+  // 데이터명·키워드·동의어 일치 — 기존 도메인 점수(0~40)를 그대로 재사용
+  const keywordScore = Math.min(RELEVANCE_WEIGHTS.keywordMatch, domainScore(dataset, keywords));
+  if (keywordScore > 0) {
+    score += keywordScore;
+    reasons.push(`데이터명/태그가 검색 키워드와 일치 (+${keywordScore})`);
+  }
+
+  // 정책분야(BRM) 일치 — 키워드가 분류된 정책분야명을 포함하는지 확인
+  const primary = dataset.brm.primary;
+  if (primary && keywords.some((kw) => primary.includes(kw) || kw.includes(primary))) {
+    score += RELEVANCE_WEIGHTS.policyFieldMatch;
+    reasons.push(`정책분야 '${primary}'가 질문과 일치 (+${RELEVANCE_WEIGHTS.policyFieldMatch})`);
+  }
+
+  // 지역조건 일치 — 기존 지역 점수(0~10) 재사용
+  const region = regionScore(dataset, keywords);
+  if (region > 5) {
+    const bonus = Math.min(RELEVANCE_WEIGHTS.regionMatch, region);
+    score += bonus;
+    reasons.push(`지역조건 일치 (+${bonus})`);
+  }
+
+  // 실시간성 요구 일치
+  if (realtimePreferred && cycleScore(dataset.updateCycle) >= 8) {
+    score += RELEVANCE_WEIGHTS.realtimeMatch;
+    reasons.push(`실시간성 요구와 일치하는 갱신주기 (+${RELEVANCE_WEIGHTS.realtimeMatch})`);
+  }
+
+  // 제공기관 조건 일치 — orgName 필터가 지정된 경우, 검색 단계에서 이미 필터링되어 항상 매칭됨
+  if (hasOrgFilter) {
+    score += RELEVANCE_WEIGHTS.organizationMatch;
+    reasons.push(`지정한 제공기관 조건과 일치 (+${RELEVANCE_WEIGHTS.organizationMatch})`);
+  }
+
+  return { score, reasons };
+}
+
+function qualityBreakdown(dataset: NormalizedDataset): { score: number; reasons: string[] } {
+  const reasons: string[] = [];
+  let score = 0;
+  const raw = dataset._raw;
+
+  // 최신성 — 기존 최신성 점수(0~10) 재사용
+  const recency = recencyScore(dataset.lastUpdated);
+  score += recency;
+  if (recency >= 8) reasons.push(`최근에 갱신된 데이터 (+${recency})`);
+
+  // 갱신주기 — 기존 주기 점수(0~10) 재사용
+  const cycle = cycleScore(dataset.updateCycle);
+  score += cycle;
+  if (cycle >= 7) reasons.push(`갱신주기가 양호함 (+${cycle})`);
+
+  // 제공형식(OpenAPI/File/Sheet) 존재 여부
+  const format =
+    dataset.type === "API"
+      ? QUALITY_WEIGHTS.formatAvailability
+      : dataset.type === "FILE"
+        ? Math.round(QUALITY_WEIGHTS.formatAvailability * 0.5)
+        : Math.round(QUALITY_WEIGHTS.formatAvailability * 0.2);
+  score += format;
+  if (dataset.type === "API") reasons.push(`OpenAPI 형태로 제공 (+${format})`);
+
+  // 제공기관·제공부서 존재 여부
+  let orgPresence = 0;
+  if (dataset.provider && dataset.provider !== "미상") orgPresence += QUALITY_WEIGHTS.organizationPresence / 2;
+  if (raw.mngStationName?.trim()) orgPresence += QUALITY_WEIGHTS.organizationPresence / 2;
+  score += orgPresence;
+  if (orgPresence > 0) reasons.push(`제공기관/부서 정보 확인됨 (+${orgPresence})`);
+
+  // 담당부서·문의처 존재 여부
+  if (raw.managerPhone?.trim() || raw.managerName?.trim()) {
+    score += QUALITY_WEIGHTS.contactPresence;
+    reasons.push(`문의처 정보 확인됨 (+${QUALITY_WEIGHTS.contactPresence})`);
+  }
+
+  // 공식 상세페이지 존재 여부
+  if (raw.shortUrl?.trim()) {
+    score += QUALITY_WEIGHTS.detailPagePresence;
+    reasons.push(`공식 상세페이지 확인됨 (+${QUALITY_WEIGHTS.detailPagePresence})`);
+  }
+
+  // 메타정보 충실도 — 핵심 필드 채움 비율
+  const fields = [
+    raw.mngOrganName,
+    raw.mngStationName,
+    raw.managerPhone,
+    raw.chngLoadNm,
+    raw.dataLtNm,
+    raw.srvType,
+    raw.shortUrl,
+  ];
+  const filled = fields.filter((f) => f?.trim()).length;
+  const completeness = Math.round((filled / fields.length) * QUALITY_WEIGHTS.metadataCompleteness);
+  score += completeness;
+
+  return { score, reasons };
+}
+
+export function computeScoreBreakdown(
+  dataset: NormalizedDataset,
+  legacyScore: number,
+  ctx: ScoreContext
+): ScoreBreakdown {
+  const relevance = relevanceBreakdown(
+    dataset,
+    ctx.keywords,
+    ctx.realtimePreferred,
+    Boolean(ctx.orgFilterApplied)
+  );
+  const quality = qualityBreakdown(dataset);
+
+  return {
+    legacyScore,
+    relevanceScore: relevance.score,
+    qualityScore: quality.score,
+    relevanceReasons: relevance.reasons,
+    qualityReasons: quality.reasons,
+  };
+}
+
 // ─── 메인 점수화 함수 ─────────────────────────────────────────────────────────
 
 export function scoreAndRank(
@@ -164,6 +298,9 @@ export function scoreAndRank(
         reason: buildReason(d, keywords),
         score,
         detailUrl: d.detailUrl,
+        brm: d.brm,
+        organization: d.organization,
+        scoreBreakdown: computeScoreBreakdown(d, score, ctx),
       } satisfies Recommendation;
     })
     .filter((rec) => rec.score >= MIN_SCORE) // 관련 없는 결과 제거

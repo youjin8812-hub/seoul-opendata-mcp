@@ -10,7 +10,7 @@ import type {
 } from "../types/index.js";
 import { extractKeywords } from "../parsers/extractKeywords.js";
 import { searchSeoulCatalog, getServiceKey } from "../services/seoulCatalogService.js";
-import { normalizeDatasets, deduplicateByTitle } from "../parsers/normalizeDataset.js";
+import { normalizeDatasets, deduplicateDatasets } from "../parsers/normalizeDataset.js";
 import { scoreAndRank } from "../ranking/scoreDataset.js";
 import { MemoryCache, normalizeCacheKey, isRealtimeQuery, TTL } from "../cache/memoryCache.js";
 import { matchesDivision } from "../utils/divisionMatch.js";
@@ -141,8 +141,8 @@ export async function recommendSeoulApisForIdea(
     );
   }
 
-  // 3. 정규화 + 중복 제거 + 제공 주체 구분 필터
-  const normalized: NormalizedDataset[] = deduplicateByTitle(
+  // 3. 정규화 + 중복 제거(서비스 ID 우선) + 제공 주체 구분 필터
+  const normalized: NormalizedDataset[] = deduplicateDatasets(
     normalizeDatasets(rawItems)
   ).filter((d) => matchesDivision(d.division, division));
 
@@ -151,6 +151,7 @@ export async function recommendSeoulApisForIdea(
     keywords,
     apiOnly,
     realtimePreferred: effectiveRealtime,
+    orgFilterApplied: Boolean(explicitOrg),
   }).slice(0, limit);
 
   const output: RecommendOutput = {
