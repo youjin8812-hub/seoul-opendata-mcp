@@ -68,7 +68,7 @@
 | 추천 질의 1회 (키워드 5개 병렬 검색) | 91ms — 병렬 호출로 단건 조회 수준 유지 |
 | 동일 조건 재질의 (캐시 히트) | 0ms대 — 외부 API 재호출 없음 |
 | API 1회 요청 상한 | 1,000건 (초과 요청 시 자동 클램핑, 실측으로 확인된 플랫폼 제약) |
-| 단위 테스트 | 31개 / 5개 파일, 100% 통과, CI(GitHub Actions)로 push마다 자동 검증 |
+| 단위 테스트 | 47개 / 8개 파일, 100% 통과, CI(GitHub Actions)로 push마다 자동 검증 |
 | 카탈로그 총 데이터 건수 | 8,251건 (공공데이터 기준, 플랫폼 공식 통계) |
 | 제공형식별 분포 | OpenAPI 5,631 · SHEET 7,331 · FILE 1,184 · CHART 1,883 · MAP 124 · LINK 320 · LOD 91 |
 
@@ -155,18 +155,22 @@ openapi.seoul.go.kr:8088/{키}/json/SearchCatalogService/{시작}/{종료}/{ID}/
 | `division` | string | "본청"/"산하기관"/"자치구" 포함 매칭 필터 |
 | `limit` | number | 최대 추천 수 (기본 5, 최대 10) |
 
-- **점수 배점 (95점 만점)**: 도메인 적합도 40 · 데이터 형태(`SRV_TYPE` 기준) 20 · 갱신주기 10 · 최신성 10 · 지역성 10 · 설명 품질 5
+- **점수 배점 (95점 만점, 하위 호환 유지)**: 도메인 적합도 40 · 데이터 형태(`SRV_TYPE` 기준) 20 · 갱신주기 10 · 최신성 10 · 지역성 10 · 설명 품질 5
+- **분리 점수(신규)**: 각 추천 결과에 `scoreBreakdown`(관련도·활용도 분리), `brm`(정책분야 분류), `organization`(제공기관 유형 분류)이 함께 반환됨 — 12장 참고. 기존 `score` 필드는 그대로 유지되므로 기존 소비자에는 영향 없음.
+- **서비스 ID 우선 중복제거**: 여러 키워드 검색에서 동일 데이터가 중복 반환될 때 `INF_ID`(서비스 ID)가 있으면 ID 기준, 없으면 제목 기준으로 폴백 제거
 
 ### 8.2 `search_seoul_datasets`
 
 - **기능**: 서비스명 키워드 직접 검색, 원시 결과 반환
 - **필터**: `orgName`, `division` 동일 지원
+- 각 결과 항목에 `brm`, `organization` 분류결과 포함(신규)
 
 ### 8.3 `list_seoul_recent_updates` (신규)
 
 - **기능**: 키워드/기관/제공주체로 범위를 좁혀 최종갱신일(`DATA_LT_NM`) 내림차순 조회
 - **용도**: 운영이 활발한 API를 우선 파악할 때 사용
 - **비고**: 카탈로그 직접 연동 이후 신설한 기능으로, 신선도 기준 조회 자체가 이 프로젝트의 고유 기능
+- 각 결과 항목에 `brm`, `organization` 분류결과 포함(신규)
 
 ### 8.4 `get_seoul_dataset_detail`
 
@@ -178,7 +182,53 @@ openapi.seoul.go.kr:8088/{키}/json/SearchCatalogService/{시작}/{종료}/{ID}/
 
 - **기능**: 이전 추천 결과를 API 재호출 없이 재필터링·재정렬
 
-## 9. 설치 및 실행
+## 9. 정책분야(BRM)·기관유형 분류 및 분리 점수
+
+카탈로그 공식 필드만으로 판별하며, 근거가 없으면 추측하지 않고 미분류/기타로 남긴다.
+
+### 9.1 정책분야(BRM) 분류 — `src/classification/brmCategory.ts`
+
+카탈로그 전체 8,255건 실측 결과 `MAP_CATE_NM`(소분류) 필드가 아래 12개 정책분야와 전 건 1:1로 일치함을 확인했다.
+
+| 분야 | 건수 | 분야 | 건수 |
+|---|---|---|---|
+| 보건 | 1,800 | 안전 | 244 |
+| 문화/관광 | 1,634 | 인구/가구 | 256 |
+| 산업/경제 | 936 | 도시관리 | 233 |
+| 복지 | 647 | 주택/건설 | 157 |
+| 교육 | 625 | 일반행정 | 549 |
+| 환경 | 605 | 교통 | 569 |
+
+- 1순위: `MAP_CATE_NM` 정규화 매칭 → `source: "catalog_map_category"`, `confidence: "high"`
+- 2순위(보조): 다른 공식 텍스트 필드에서 분야명 부분일치 → `source: "keyword_inference"`, `confidence: "low"`
+- 근거 없음: `primary: null`, `source: "unclassified"` — 공식 BRM 코드(2·3·4차)는 응답에 없으므로 임의 생성하지 않음(`code`는 항상 `null`)
+
+### 9.2 제공기관 유형 분류 — `src/classification/organizationType.ts`
+
+`DITC_NM`(제공 주체 구분) 실측 6개 값을 직접 매핑한다(별도 공식 레지스트리 없이도 고신뢰 분류 가능).
+
+| DITC_NM 원본값 | 건수 | 매핑 유형 |
+|---|---|---|
+| 서울시(본청) | 5,276 | headquarters — 서울시 본청 |
+| 자치구 및 자치구산하 | 2,134 | district — 자치구 |
+| 서울시(사업소) | 12 | business_office — 사업소 |
+| 서울시(산하기관) | 364 | invested_funded — 투자·출연기관 |
+| 공공기관(외부) | 467 | other — 기타 기관 |
+| 민간(기업) | 2 | other — 기타 기관 |
+
+### 9.3 관련도(relevance)·활용도(quality) 분리 점수 — `src/ranking/scoreDataset.ts`, `src/config/scoringConfig.ts`
+
+기존 legacy 95점 스코어(정렬·필터링에 계속 사용)는 그대로 두고, `recommend_seoul_apis_for_idea` 결과마다 `scoreBreakdown`을 추가로 반환한다. 배점은 `scoringConfig.ts`에 상수로 분리되어 있다.
+
+- **질문 관련도** (`relevanceScore`, 배점 합 80): 데이터명·키워드·동의어 일치 40 · 정책분야(BRM) 일치 15 · 지역조건 일치 10 · 실시간성 요구 일치 10 · 제공기관 조건 일치 5
+- **데이터 활용도** (`qualityScore`, 배점 합 65): 최신성 10 · 갱신주기 10 · 제공형식(OpenAPI/File/Sheet) 존재 15 · 제공기관·부서 존재 10 · 문의처 존재 5 · 공식 상세페이지 존재 5 · 메타정보 충실도 10 — 실제 상태점검을 하지 않은 API 가용성·갱신주기 준수 여부는 포함하지 않음
+- `relevanceReasons`/`qualityReasons`에 각 배점이 부여된 근거를 사람이 읽을 수 있는 문장으로 함께 반환
+
+### 9.4 서비스 ID 우선 중복제거 — `src/parsers/normalizeDataset.ts`
+
+여러 키워드로 병렬 검색할 때 동일 데이터가 반복 반환될 수 있어, `INF_ID`(서비스 ID)가 있으면 ID 기준으로, 없으면 기존처럼 제목 기준으로 폴백해 중복을 제거한다(`deduplicateDatasets`). 기존 제목 기준 함수(`deduplicateByTitle`)는 하위 호환을 위해 그대로 남겨둔다.
+
+## 10. 설치 및 실행
 
 ```bash
 pnpm install
@@ -189,7 +239,7 @@ cp .env.example .env   # SEOUL_OPEN_DATA_API_KEY 입력
 - 인증키 발급: [data.seoul.go.kr](https://data.seoul.go.kr) 마이페이지 → 인증키 신청
 - 유의사항: 발급 즉시가 아니라 실제 반영까지 다소 시간이 걸릴 수 있음
 
-## 10. MCP 등록
+## 11. MCP 등록
 
 **Claude Code**
 
@@ -213,18 +263,18 @@ claude mcp add seoul-opendata-mcp -s user \
 }
 ```
 
-## 11. 테스트·빌드
+## 12. 테스트·빌드
 
 ```bash
-pnpm test    # vitest — 31개 테스트
+pnpm test    # vitest — 47개 테스트
 pnpm build   # TypeScript 컴파일
 pnpm dev     # 변경 감지 자동 재빌드
 ```
 
-## 12. 사용 기술
+## 13. 사용 기술
 
 TypeScript · Node.js 18+ · `@modelcontextprotocol/sdk` · zod · vitest · pnpm · GitHub Actions
 
-## 13. 라이선스
+## 14. 라이선스
 
 MIT
