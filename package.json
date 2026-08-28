@@ -7,6 +7,9 @@
   "bin": {
     "seoul-opendata-mcp": "dist/server.js"
   },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/server.ts",

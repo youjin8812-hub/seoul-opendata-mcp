@@ -1,0 +1,1 @@
+{"version":3,"file":"divisionMatch.js","sourceRoot":"","sources":["../../src/utils/divisionMatch.ts"],"names":[],"mappings":"AAAA;;;;GAIG;AACH,MAAM,UAAU,eAAe,CAAC,QAAgB,EAAE,MAAe;IAC/D,IAAI,CAAC,MAAM;QAAE,OAAO,IAAI,CAAC;IACzB,OAAO,QAAQ,CAAC,QAAQ,CAAC,MAAM,CAAC,IAAI,EAAE,CAAC,CAAC;AAC1C,CAAC"}
