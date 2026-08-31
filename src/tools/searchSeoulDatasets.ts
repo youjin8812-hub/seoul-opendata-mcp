@@ -5,12 +5,12 @@
 
 import type { SearchInput, SearchOutput } from "../types/index.js";
 import { searchSeoulCatalog, getServiceKey } from "../services/seoulCatalogService.js";
-import { MemoryCache, normalizeCacheKey } from "../cache/memoryCache.js";
+import { MemoryCache, normalizeCacheKey, TTL } from "../cache/memoryCache.js";
 import { matchesDivision } from "../utils/divisionMatch.js";
 import { classifyBrm } from "../classification/brmCategory.js";
 import { classifyOrganization } from "../classification/organizationType.js";
 
-const searchCache = new MemoryCache<SearchOutput>(3 * 60 * 1000);
+const searchCache = new MemoryCache<SearchOutput>(TTL.DEFAULT);
 
 export async function searchSeoulDatasetsForTool(
   input: SearchInput

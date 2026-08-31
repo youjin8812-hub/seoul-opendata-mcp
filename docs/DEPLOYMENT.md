@@ -29,7 +29,10 @@ GET  /          서버 소개 JSON
 | `SEOUL_OPEN_DATA_API_KEY` | ✅ | 서울 열린데이터광장 인증키 (https://data.seoul.go.kr 발급) |
 | `PORT` | | 리스닝 포트 (기본 `8080`) |
 | `HOST` | | 바인딩 주소 (기본 `0.0.0.0`) |
-| `MCP_AUTH_TOKEN` | | 설정 시 `Authorization: Bearer <토큰>` 필수. **공개 배포 시 반드시 설정** |
+| `MCP_AUTH_TOKEN` | | 설정 시 `Authorization: Bearer <토큰>` 필수. 공개 서버는 비워두고 아래 요청 제한으로 보호한다. 설정 시 인증된 요청은 IP 제한을 면제받는다 |
+| `MCP_RATE_LIMIT_PER_MIN` | | IP당 분당 요청 수 (기본 `20`, 순간 버스트는 2배) |
+| `MCP_RATE_LIMIT_PER_DAY` | | IP당 하루 요청 수 (기본 `200`) |
+| `SEOUL_API_DAILY_BUDGET` | | 서울시 API 전역 일일 호출 예산 (기본 `900`, 한국시간 자정 리셋) |
 | `MCP_PATH` | | MCP 엔드포인트 경로 (기본 `/mcp`) |
 | `MCP_ALLOWED_HOSTS` | | DNS 리바인딩 방지 Host 허용 목록 (쉼표 구분) |
 | `MCP_ALLOWED_ORIGINS` | | 허용 Origin 목록 (쉼표 구분) |
@@ -104,9 +107,10 @@ Dockerfile 하나로 동일하게 배포된다. 어느 쪽이든 **포트는 `PO
 ### Claude Code
 
 ```bash
-claude mcp add --transport http seoul-opendata https://<app>.fly.dev/mcp \
-  --header "Authorization: Bearer <MCP_AUTH_TOKEN>"
+claude mcp add --transport http seoul-opendata https://<app>.fly.dev/mcp
 ```
+
+> `MCP_AUTH_TOKEN`을 설정한 서버라면 뒤에 `--header "Authorization: Bearer <MCP_AUTH_TOKEN>"`을 붙인다.
 
 ### Claude Desktop / Cursor (원격 HTTP)
 
@@ -115,10 +119,7 @@ claude mcp add --transport http seoul-opendata https://<app>.fly.dev/mcp \
   "mcpServers": {
     "seoul-opendata": {
       "type": "http",
-      "url": "https://<app>.fly.dev/mcp",
-      "headers": {
-        "Authorization": "Bearer <MCP_AUTH_TOKEN>"
-      }
+      "url": "https://<app>.fly.dev/mcp"
     }
   }
 }
@@ -133,8 +134,7 @@ HTTP 전송을 지원하지 않는 구버전 클라이언트라면 `mcp-remote` 
       "command": "npx",
       "args": [
         "-y", "mcp-remote",
-        "https://<app>.fly.dev/mcp",
-        "--header", "Authorization: Bearer <MCP_AUTH_TOKEN>"
+        "https://<app>.fly.dev/mcp"
       ]
     }
   }
@@ -145,7 +145,9 @@ HTTP 전송을 지원하지 않는 구버전 클라이언트라면 `mcp-remote` 
 
 ## 5. 운영 시 주의점
 
-- **인증 없이 열지 말 것.** `MCP_AUTH_TOKEN`을 비우면 누구나 호출할 수 있고, 서울 열린데이터광장 인증키의 일일 호출 한도를 남이 소진시킬 수 있다.
+- **토큰 없이 공개해도 되지만, 요청 제한은 반드시 켜 둘 것.** 인증키 하나를 모든 사용자가 공유하므로 남용 시 일일 한도가 소진된다. 기본값(IP당 20/분·200/일, 전역 900콜/일)이 이미 적용돼 있고, 전역 예산은 상위 API 호출 직전에 차감된다(`src/services/seoulCatalogService.ts`). 예산 소진 시 도구는 리셋 시각을 안내하는 오류를 반환한다.
+- **한도 산정 기준.** 서울 열린데이터광장은 개발계정 하루 약 1,000건, 운영계정 최대 100,000건이다. 추천 도구 1회가 상위 API를 5~8번 부르므로 개발계정 기준 하루 추천 125~200회에 해당한다. 운영계정 승인을 받았다면 `SEOUL_API_DAILY_BUDGET`을 올린다.
+- **잔여량 확인.** `GET /healthz`와 `GET /`가 `quota`(used/budget/remaining/resetsInSec)를 반환한다.
 - **브라우저에서 호출할 계획이라면** `MCP_ALLOWED_HOSTS`·`MCP_ALLOWED_ORIGINS`를 배포 도메인으로 지정해 DNS 리바인딩을 막는다.
 - **캐시는 인메모리**(`src/cache/memoryCache.ts`)다. 머신이 재우거나 재시작되면 비워지고, 머신마다 따로 유지된다. 정확성에는 영향이 없고 첫 호출이 조금 느려질 뿐이다.
 - 로그는 stderr로 나가므로 `fly logs`로 바로 확인할 수 있다.

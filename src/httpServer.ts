@@ -14,7 +14,11 @@
  * 환경변수
  *   SEOUL_OPEN_DATA_API_KEY  (필수) 서울 열린데이터광장 인증키
  *   PORT                     리스닝 포트 (기본 8080)
- *   MCP_AUTH_TOKEN           설정 시 Authorization: Bearer <토큰> 필수
+ *   MCP_AUTH_TOKEN           (선택) 설정 시 Authorization: Bearer <토큰> 필수.
+ *                            공개 서버에서는 비워두고 아래 요청 제한으로 보호한다.
+ *   MCP_RATE_LIMIT_PER_MIN   IP당 분당 요청 수 (기본 20, 버스트는 2배)
+ *   MCP_RATE_LIMIT_PER_DAY   IP당 하루 요청 수 (기본 200)
+ *   SEOUL_API_DAILY_BUDGET   상위 API 전역 일일 호출 예산 (기본 900)
  *   MCP_ALLOWED_HOSTS        쉼표 구분 Host 허용 목록 (DNS 리바인딩 방지)
  *   MCP_ALLOWED_ORIGINS      쉼표 구분 Origin 허용 목록
  */
@@ -25,6 +29,8 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 
 import { createSeoulMcpServer } from "./createServer.js";
 import { logger } from "./utils/logger.js";
+import { RateLimiter } from "./utils/rateLimiter.js";
+import { seoulApiQuota } from "./utils/dailyQuota.js";
 
 const PORT = Number(process.env["PORT"] ?? 8080);
 const HOST = process.env["HOST"] ?? "0.0.0.0";
@@ -33,6 +39,35 @@ const MCP_PATH = process.env["MCP_PATH"] ?? "/mcp";
 
 /** 요청 본문 최대 크기 (4MB) */
 const MAX_BODY_BYTES = 4 * 1024 * 1024;
+
+function envInt(name: string, fallback: number): number {
+  const raw = Number(process.env[name]);
+  return Number.isFinite(raw) && raw > 0 ? raw : fallback;
+}
+
+/**
+ * 토큰 없이 공개된 서버를 보호하는 IP 단위 제한.
+ * 사람이 대화하며 쓰는 속도보다 한참 넉넉하고, 스크립트 난사만 걸린다.
+ */
+const rateLimiter = new RateLimiter({
+  perMinute: envInt("MCP_RATE_LIMIT_PER_MIN", 20),
+  perDay: envInt("MCP_RATE_LIMIT_PER_DAY", 200),
+});
+
+// 오래된 버킷 정리 (10분마다) — 프로세스 종료를 막지 않도록 unref
+setInterval(() => rateLimiter.prune(), 10 * 60 * 1000).unref();
+
+/** 프록시(Fly.io 등) 뒤에서 실제 클라이언트 IP를 찾는다. */
+function clientIp(req: http.IncomingMessage): string {
+  const flyIp = req.headers["fly-client-ip"];
+  if (typeof flyIp === "string" && flyIp.trim()) return flyIp.trim();
+
+  const forwarded = req.headers["x-forwarded-for"];
+  const first = (Array.isArray(forwarded) ? forwarded[0] : forwarded)?.split(",")[0]?.trim();
+  if (first) return first;
+
+  return req.socket.remoteAddress ?? "unknown";
+}
 
 function splitList(value: string | undefined): string[] | undefined {
   const items = (value ?? "")
@@ -130,6 +165,7 @@ const httpServer = http.createServer((req, res) => {
     sendJson(res, 200, {
       status: "ok",
       apiKeyConfigured: Boolean(process.env["SEOUL_OPEN_DATA_API_KEY"]),
+      quota: seoulApiQuota.status(),
       timestamp: new Date().toISOString(),
     });
     return;
@@ -142,6 +178,13 @@ const httpServer = http.createServer((req, res) => {
       transport: "streamable-http",
       endpoint: MCP_PATH,
       authRequired: Boolean(AUTH_TOKEN),
+      limits: {
+        perIpPerMinute: envInt("MCP_RATE_LIMIT_PER_MIN", 20),
+        perIpPerDay: envInt("MCP_RATE_LIMIT_PER_DAY", 200),
+        sharedApiCallsPerDay: seoulApiQuota.status().budget,
+        note: "한도는 서울 열린데이터광장 인증키 하나를 모두가 나눠 쓰기 때문에 존재합니다",
+      },
+      quota: seoulApiQuota.status(),
       docs: "https://github.com/youjin8812-hub/seoul-opendata-mcp",
     });
     return;
@@ -150,6 +193,20 @@ const httpServer = http.createServer((req, res) => {
   if (url.pathname !== MCP_PATH) {
     sendJson(res, 404, { error: "Not Found", hint: `MCP 엔드포인트는 ${MCP_PATH} 입니다` });
     return;
+  }
+
+  // 토큰을 설정한 서버에서는 인증된 요청이 IP 제한을 면제받는다.
+  if (!AUTH_TOKEN) {
+    const decision = rateLimiter.check(clientIp(req));
+    if (!decision.allowed) {
+      res.setHeader("Retry-After", String(decision.retryAfterSec ?? 60));
+      const message =
+        decision.reason === "per_day"
+          ? `이 IP의 하루 요청 한도를 초과했습니다. 한국시간 자정에 초기화됩니다.`
+          : `요청이 너무 잦습니다. ${decision.retryAfterSec ?? 60}초 후 다시 시도해 주세요.`;
+      sendRpcError(res, 429, -32002, message);
+      return;
+    }
   }
 
   if (!isAuthorized(req)) {
@@ -172,8 +229,15 @@ httpServer.listen(PORT, HOST, () => {
   if (!process.env["SEOUL_OPEN_DATA_API_KEY"]) {
     logger.warn("SEOUL_OPEN_DATA_API_KEY가 설정되지 않았습니다 — 모든 도구 호출이 실패합니다");
   }
-  if (!AUTH_TOKEN) {
-    logger.warn("MCP_AUTH_TOKEN이 없어 인증 없이 공개됩니다 — 외부 배포 시 설정을 권장합니다");
+  const quota = seoulApiQuota.status();
+  if (AUTH_TOKEN) {
+    logger.info("MCP_AUTH_TOKEN이 설정되어 인증된 요청만 허용합니다 (IP 제한 면제)");
+  } else {
+    logger.info("토큰 없이 공개 운영 중 — IP 제한과 일일 예산으로 보호합니다", {
+      perMinute: envInt("MCP_RATE_LIMIT_PER_MIN", 20),
+      perDay: envInt("MCP_RATE_LIMIT_PER_DAY", 200),
+      sharedApiBudget: quota.budget,
+    });
   }
   process.stderr.write(`[INFO] Seoul Open Data MCP 서버 시작됨 (http://${HOST}:${PORT}${MCP_PATH})\n`);
 });
