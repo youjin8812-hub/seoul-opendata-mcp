@@ -318,7 +318,7 @@ seoul-opendata-mcp
 openapi.seoul.go.kr:8088/{키}/json/SearchCatalogService/{시작}/{종료}/{ID}/{서비스명}/{기관명}/
 ```
 
-**성능**: 추천 질의 1회(키워드 5개 병렬 검색) 기준 약 90ms대, 동일 조건 재질의는 캐시 히트로 외부 API 재호출 없이 즉시 응답. 단위 테스트 47개 전체 통과.
+**성능**: 추천 질의 1회(키워드 5개 병렬 검색) 기준 약 90ms대, 동일 조건 재질의는 캐시 히트로 외부 API 재호출 없이 즉시 응답. 단위 테스트 59개 전체 통과.
 
 캐시 정책: 실시간성 키워드 질의 1분 · 일반 검색/추천 5분 · 상세 조회 30분 (in-memory TTL). 네트워크 오류·5xx 응답은 지수 백오프로 최대 3회 재시도합니다.
 
@@ -402,7 +402,7 @@ claude mcp add --transport http seoul-opendata https://<app>.fly.dev/mcp
 ## 🧪 테스트 · 빌드
 
 ```bash
-pnpm test       # vitest — 47개 테스트
+pnpm test       # vitest — 59개 테스트
 pnpm build      # TypeScript 컴파일
 pnpm dev        # stdio 서버 (로컬 개발)
 pnpm dev:http   # HTTP 서버 (기본 http://localhost:8080/mcp)
