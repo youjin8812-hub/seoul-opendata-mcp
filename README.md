@@ -247,7 +247,7 @@ MCP가 찾아주는 실제 서울시 API를 조합하면 아래와 같은 서비
 
 ```
 AI 어시스턴트 (Claude / Cursor)
-        │ MCP (stdio)
+        │ MCP — stdio(로컬) 또는 Streamable HTTP(원격 배포)
         ▼
 seoul-opendata-mcp
   ├─ recommend_seoul_apis_for_idea   아이디어 → 키워드 → 검색 → 점수화 → 추천
@@ -386,18 +386,52 @@ claude mcp add seoul-opendata-mcp -s user \
 }
 ```
 
-## 13. 테스트·빌드
+## 13. 원격 배포 (Fly.io 등)
 
-```bash
-pnpm test    # vitest — 47개 테스트
-pnpm build   # TypeScript 컴파일
-pnpm dev     # 변경 감지 자동 재빌드
+로컬 stdio 실행 외에, **Streamable HTTP 전송으로 외부에 배포**해 여러 사람이 URL 하나로 붙어 쓸 수 있다.
+
+```
+POST /mcp       MCP JSON-RPC (Streamable HTTP, 무상태 모드)
+GET  /healthz   헬스체크
 ```
 
-## 14. 사용 기술
+stdio 진입점(`src/server.ts`)과 HTTP 진입점(`src/httpServer.ts`)은 `src/createServer.ts`의 동일한 도구 정의를 공유하므로, 도구를 고치면 양쪽에 함께 반영된다.
+
+**Fly.io 배포 (저장소에 `Dockerfile`·`fly.toml` 포함)**
+
+```bash
+fly launch --no-deploy --copy-config
+fly secrets set SEOUL_OPEN_DATA_API_KEY=발급받은키 MCP_AUTH_TOKEN=$(openssl rand -hex 32)
+fly deploy
+curl -s https://<app>.fly.dev/healthz
+```
+
+**클라이언트 등록 (Claude Code)**
+
+```bash
+claude mcp add --transport http seoul-opendata https://<app>.fly.dev/mcp \
+  --header "Authorization: Bearer <MCP_AUTH_TOKEN>"
+```
+
+- 무상태 모드라 머신을 늘려도 sticky session이 필요 없고, 트래픽이 없으면 머신이 자동으로 잠들어(`auto_stop_machines`) 비용이 거의 들지 않는다.
+- 같은 Dockerfile로 Render·Railway·Cloud Run에도 그대로 올라간다.
+- **공개 배포 시 `MCP_AUTH_TOKEN`을 반드시 설정할 것.** 비워두면 누구나 호출해 인증키의 일일 한도를 소진시킬 수 있다.
+
+자세한 환경변수·플랫폼별 절차·운영 주의점은 **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** 참고.
+
+## 14. 테스트·빌드
+
+```bash
+pnpm test       # vitest — 47개 테스트
+pnpm build      # TypeScript 컴파일
+pnpm dev        # stdio 서버 (로컬 개발)
+pnpm dev:http   # HTTP 서버 (기본 http://localhost:8080/mcp)
+```
+
+## 15. 사용 기술
 
 TypeScript · Node.js 18+ · `@modelcontextprotocol/sdk` · zod · vitest · pnpm · GitHub Actions
 
-## 15. 라이선스
+## 16. 라이선스
 
 MIT

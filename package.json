@@ -13,7 +13,9 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/server.ts",
+    "dev:http": "tsx src/httpServer.ts",
     "start": "node dist/server.js",
+    "start:http": "node dist/httpServer.js",
     "test": "vitest run",
     "test:watch": "vitest"
   },
