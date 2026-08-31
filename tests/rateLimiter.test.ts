@@ -128,6 +128,15 @@ describe("DailyQuota", () => {
     expect(quota.status().used).toBe(3);
   });
 
+  it("예산이 0 이하면 비활성화된다", () => {
+    const clock = fakeClock(Date.parse("2026-08-31T03:00:00Z"));
+    const quota = new DailyQuota(0, clock.now);
+
+    for (let i = 0; i < 1000; i++) {
+      expect(quota.consume()).toBe(true);
+    }
+  });
+
   it("KST 자정에 예산이 초기화된다", () => {
     const clock = fakeClock(Date.parse("2026-08-31T14:50:00Z"));
     const quota = new DailyQuota(1, clock.now);

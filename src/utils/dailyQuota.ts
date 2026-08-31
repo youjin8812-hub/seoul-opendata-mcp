@@ -1,12 +1,13 @@
 /**
- * 서울 열린데이터광장 인증키의 일일 호출 예산을 지키는 전역 카운터.
+ * 상위 API(서울 열린데이터광장) 호출 수의 전역 일일 상한 — 폭주 방지용 안전장치.
  *
- * 공개 서버는 인증키 하나를 모든 사용자가 공유한다. 개발계정 기준 하루 1,000건,
- * 운영계정은 최대 100,000건이므로 기본값은 900(개발계정 + 여유분)으로 잡고
- * SEOUL_API_DAILY_BUDGET 환경변수로 올릴 수 있게 한다.
+ * 주의: 서울 열린데이터광장의 일반 오픈API에는 호출 "횟수" 제한이 없다
+ * (1,000건은 1회 호출당 최대 응답 건수이고, 1일 1,000회 제한은 실시간 지하철
+ * 오픈API에만 적용된다). 이 서버가 쓰는 SearchCatalogService는 해당되지 않는다.
  *
- * 추천 도구 1회 호출이 상위 API를 5~8번 부르므로, "요청 수" 제한과 별개로
- * 실제 상위 호출 수를 여기서 직접 센다.
+ * 따라서 이 카운터는 인증키 한도를 지키려는 것이 아니라, 무한 루프에 빠진
+ * 클라이언트나 크롤러가 상위 API를 하루 종일 두드리는 사고를 막는 차단기다.
+ * 넉넉하게 잡고, SEOUL_API_DAILY_BUDGET=0 으로 끌 수 있다.
  */
 
 import { kstDayKey, secondsUntilKstMidnight } from "./rateLimiter.js";
@@ -34,6 +35,7 @@ export class DailyQuota {
 
   /** 상위 API를 1회 호출하기 전에 예산을 차감한다. 소진 시 false. */
   consume(count = 1): boolean {
+    if (this.budget <= 0) return true; // 0 이하 = 비활성
     this.rollover();
     if (this.used + count > this.budget) return false;
     this.used += count;
@@ -57,19 +59,21 @@ export class QuotaExhaustedError extends Error {
     const hours = Math.floor(resetsInSec / 3600);
     const minutes = Math.ceil((resetsInSec % 3600) / 60);
     super(
-      `오늘 이 공개 서버의 서울 열린데이터광장 호출 예산을 모두 사용했습니다. ` +
+      `이 공개 서버의 오늘 상위 API 호출 상한에 도달했습니다(비정상 트래픽 차단기). ` +
         `약 ${hours}시간 ${minutes}분 뒤(한국시간 자정) 초기화됩니다. ` +
-        `바로 쓰려면 data.seoul.go.kr에서 본인 인증키를 발급받아 서버를 직접 띄우세요 (README의 "직접 실행" 참고).`
+        `바로 쓰려면 data.seoul.go.kr에서 본인 인증키를 발급받아 서버를 직접 띄우세요 (README 참고).`
     );
     this.name = "QuotaExhaustedError";
   }
 }
 
-const DEFAULT_BUDGET = 900;
+const DEFAULT_BUDGET = 50_000;
 
 function readBudget(): number {
   const raw = Number(process.env["SEOUL_API_DAILY_BUDGET"]);
-  return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_BUDGET;
+  // 명시적으로 0 이하를 주면 비활성, 값이 없거나 이상하면 기본값
+  if (Number.isFinite(raw)) return raw;
+  return DEFAULT_BUDGET;
 }
 
 /** 프로세스 전역 예산 인스턴스 (상위 API 호출부에서 사용) */

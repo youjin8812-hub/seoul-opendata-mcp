@@ -16,9 +16,9 @@
  *   PORT                     리스닝 포트 (기본 8080)
  *   MCP_AUTH_TOKEN           (선택) 설정 시 Authorization: Bearer <토큰> 필수.
  *                            공개 서버에서는 비워두고 아래 요청 제한으로 보호한다.
- *   MCP_RATE_LIMIT_PER_MIN   IP당 분당 요청 수 (기본 20, 버스트는 2배)
- *   MCP_RATE_LIMIT_PER_DAY   IP당 하루 요청 수 (기본 200)
- *   SEOUL_API_DAILY_BUDGET   상위 API 전역 일일 호출 예산 (기본 900)
+ *   MCP_RATE_LIMIT_PER_MIN   IP당 분당 요청 수 (기본 60, 버스트는 2배)
+ *   MCP_RATE_LIMIT_PER_DAY   IP당 하루 요청 수 (기본 2000)
+ *   SEOUL_API_DAILY_BUDGET   상위 API 전역 일일 호출 상한 (기본 50000, 0이면 해제)
  *   MCP_ALLOWED_HOSTS        쉼표 구분 Host 허용 목록 (DNS 리바인딩 방지)
  *   MCP_ALLOWED_ORIGINS      쉼표 구분 Origin 허용 목록
  */
@@ -47,11 +47,14 @@ function envInt(name: string, fallback: number): number {
 
 /**
  * 토큰 없이 공개된 서버를 보호하는 IP 단위 제한.
+ *
+ * 서울 열린데이터광장 일반 오픈API에는 호출 횟수 제한이 없으므로, 이 제한이
+ * 지키는 대상은 인증키 한도가 아니라 이 서버가 올라간 머신(shared-cpu-1x)이다.
  * 사람이 대화하며 쓰는 속도보다 한참 넉넉하고, 스크립트 난사만 걸린다.
  */
 const rateLimiter = new RateLimiter({
-  perMinute: envInt("MCP_RATE_LIMIT_PER_MIN", 20),
-  perDay: envInt("MCP_RATE_LIMIT_PER_DAY", 200),
+  perMinute: envInt("MCP_RATE_LIMIT_PER_MIN", 60),
+  perDay: envInt("MCP_RATE_LIMIT_PER_DAY", 2000),
 });
 
 // 오래된 버킷 정리 (10분마다) — 프로세스 종료를 막지 않도록 unref
@@ -179,10 +182,10 @@ const httpServer = http.createServer((req, res) => {
       endpoint: MCP_PATH,
       authRequired: Boolean(AUTH_TOKEN),
       limits: {
-        perIpPerMinute: envInt("MCP_RATE_LIMIT_PER_MIN", 20),
-        perIpPerDay: envInt("MCP_RATE_LIMIT_PER_DAY", 200),
+        perIpPerMinute: envInt("MCP_RATE_LIMIT_PER_MIN", 60),
+        perIpPerDay: envInt("MCP_RATE_LIMIT_PER_DAY", 2000),
         sharedApiCallsPerDay: seoulApiQuota.status().budget,
-        note: "한도는 서울 열린데이터광장 인증키 하나를 모두가 나눠 쓰기 때문에 존재합니다",
+        note: "서버 보호용 제한입니다. 대화하며 쓰는 정도로는 걸리지 않습니다",
       },
       quota: seoulApiQuota.status(),
       docs: "https://github.com/youjin8812-hub/seoul-opendata-mcp",
@@ -234,8 +237,8 @@ httpServer.listen(PORT, HOST, () => {
     logger.info("MCP_AUTH_TOKEN이 설정되어 인증된 요청만 허용합니다 (IP 제한 면제)");
   } else {
     logger.info("토큰 없이 공개 운영 중 — IP 제한과 일일 예산으로 보호합니다", {
-      perMinute: envInt("MCP_RATE_LIMIT_PER_MIN", 20),
-      perDay: envInt("MCP_RATE_LIMIT_PER_DAY", 200),
+      perMinute: envInt("MCP_RATE_LIMIT_PER_MIN", 60),
+      perDay: envInt("MCP_RATE_LIMIT_PER_DAY", 2000),
       sharedApiBudget: quota.budget,
     });
   }
