@@ -1,10 +1,9 @@
 #!/usr/bin/env node
 /**
- * Seoul Open Data API Finder — MCP 서버 진입점
- * Claude Desktop / Cursor 등 MCP 클라이언트와 stdio로 통신한다.
+ * Seoul Open Data API Finder — stdio 진입점
  *
- * 서울 열린데이터광장(data.seoul.go.kr)의 자체 카탈로그 API인 SearchCatalogService를
- * 직접 호출해 8천여 건의 서울시(본청+산하기관+자치구) 데이터셋을 검색·추천한다.
+ * Claude Desktop / Claude Code / Cursor 등 로컬 MCP 클라이언트와 stdio로 통신한다.
+ * 원격(HTTP) 배포용 진입점은 src/httpServer.ts 참고.
  */
-import "dotenv/config";
+export {};
 //# sourceMappingURL=server.d.ts.map
