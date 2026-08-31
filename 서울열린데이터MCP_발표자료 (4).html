@@ -1,0 +1,1049 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0a0618">
+<title>Seoul OpenData MCP</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gothic+A1:wght@400;700;800;900&family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap">
+<style>
+:root{
+  --void:#0a0618; --void-2:#0d0a20;
+  --panel:rgba(255,255,255,.048); --panel-2:rgba(255,255,255,.082);
+  --edge:rgba(240,236,255,.15); --edge-lit:rgba(0,229,209,.4); --edge-vio:rgba(185,140,255,.4);
+  --ink:#f0ecff; --mut:#a99fd0; --dim:#7a719e;
+  --cyan:#00e5d1; --violet:#7a5cff; --lilac:#b98cff; --pink:#ff5c9d; --lime:#c9f24a;
+  --display:"Gothic A1","Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --body:"IBM Plex Sans KR","Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --mono:"Space Mono",ui-monospace,Consolas,monospace;
+  --ease:cubic-bezier(.22,1,.36,1);
+}
+*{box-sizing:border-box}
+body{margin:0;background:#05030e;color:var(--ink);font-family:var(--body);
+  word-break:keep-all;-webkit-font-smoothing:antialiased;overflow:hidden}
+button{font:inherit;color:inherit;border:0;background:none}
+:focus-visible{outline:2px solid var(--cyan);outline-offset:3px}
+h1,h2,h3,p,ul,ol,figure,table{margin:0}
+table{border-collapse:collapse;width:100%}
+
+.stage{position:fixed;inset:0;display:grid;place-items:center;background:#05030e}
+.frame{
+  container-type:inline-size;
+  position:relative;width:min(100vw,calc(100dvh*16/9));height:min(100dvh,calc(100vw*9/16));
+  overflow:hidden;background:var(--void);
+}
+.frame::before{content:"";position:absolute;inset:0;z-index:0;pointer-events:none;
+  background:radial-gradient(58cqi 46cqi at 10% 2%,rgba(122,92,255,.34),transparent 62%),
+             radial-gradient(52cqi 42cqi at 94% 98%,rgba(0,229,209,.2),transparent 60%),
+             radial-gradient(40cqi 34cqi at 72% 12%,rgba(255,92,157,.1),transparent 64%)}
+.frame::after{content:"";position:absolute;inset:0;z-index:13;pointer-events:none;opacity:.055;mix-blend-mode:screen;
+  background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 160 160' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+
+.progress{position:absolute;left:0;right:0;top:0;z-index:11;height:.28cqi;background:rgba(240,236,255,.09)}
+.progress i{display:block;height:100%;transform-origin:left;transform:scaleX(.055);transition:transform .4s var(--ease);
+  background:linear-gradient(90deg,var(--violet),var(--cyan));box-shadow:0 0 1.4cqi rgba(0,229,209,.7)}
+
+/* ── 슬라이드 ── */
+.slide{position:absolute;inset:0;z-index:1;padding:3.5cqi 4cqi 3.1cqi;
+  display:grid;grid-template-rows:auto minmax(0,1fr);gap:2cqi;
+  opacity:0;visibility:hidden;transform:translateY(1.2cqi) scale(.994);
+  transition:opacity .4s var(--ease),transform .5s var(--ease),visibility .4s}
+.slide.on{opacity:1;visibility:visible;transform:none;z-index:3}
+.slide > *{position:relative;z-index:2}
+
+.head{display:flex;align-items:flex-end;justify-content:space-between;gap:3cqi}
+.eyebrow{display:inline-flex;align-items:center;gap:.9cqi;font-family:var(--mono);font-weight:700;
+  font-size:.74cqi;letter-spacing:.22em;text-transform:uppercase;color:var(--cyan)}
+.eyebrow::before{content:"";width:2.2cqi;height:.1cqi;background:currentColor}
+.eyebrow.vio{color:var(--lilac)}
+h2{margin-top:.9cqi;font-family:var(--display);font-weight:900;font-size:2.95cqi;
+  line-height:1.13;letter-spacing:-.038em;text-wrap:balance}
+h2 em{font-style:normal;background:linear-gradient(96deg,var(--cyan),var(--lilac));
+  -webkit-background-clip:text;background-clip:text;color:transparent}
+h2 .pk{font-style:normal;color:var(--pink)}
+.lead{margin-top:.9cqi;max-width:82ch;font-size:1cqi;line-height:1.6;color:var(--mut)}
+.lead b{color:var(--ink);font-weight:600}
+.head-note{flex:0 0 auto;max-width:34cqi;font-size:.78cqi;line-height:1.55;color:var(--dim);text-align:right}
+.head-note b{color:var(--cyan)}
+
+.body{min-height:0;display:grid;gap:1.15cqi}
+.r2{grid-template-rows:auto minmax(0,1fr)}
+.r2e{grid-template-rows:minmax(0,1fr) auto}
+.r3{grid-template-rows:repeat(3,minmax(0,1fr))}
+.c2{grid-template-columns:1fr 1fr}
+.c3{grid-template-columns:repeat(3,1fr)}
+.c4{grid-template-columns:repeat(4,1fr)}
+.c6{grid-template-columns:repeat(6,1fr)}
+.cA{grid-template-columns:minmax(0,1.35fr) minmax(0,1fr)}
+.cB{grid-template-columns:minmax(0,1fr) minmax(0,1.35fr)}
+.cC{grid-template-columns:minmax(0,1.6fr) minmax(0,1fr)}
+.fill{display:grid;gap:1.15cqi;min-height:0}
+
+/* ── 패널 ── */
+.p{position:relative;min-width:0;min-height:0;padding:1.7cqi 1.9cqi;border:.09cqi solid var(--edge);
+  border-radius:1.5cqi;background:var(--panel);backdrop-filter:blur(1.6cqi);
+  display:flex;flex-direction:column;gap:.9cqi;overflow:hidden}
+.p::before{content:"";position:absolute;inset:0;pointer-events:none;border-radius:inherit;
+  background:radial-gradient(80% 55% at 100% 0%,rgba(185,140,255,.12),transparent 62%)}
+.p > *{position:relative;z-index:1}
+.p.lit{border-color:var(--edge-lit);background:linear-gradient(150deg,rgba(0,229,209,.13),var(--panel) 58%);
+  box-shadow:0 0 3cqi rgba(0,229,209,.13)}
+.p.lit::before{background:radial-gradient(80% 55% at 100% 0%,rgba(0,229,209,.16),transparent 62%)}
+.p.vio{border-color:var(--edge-vio);background:linear-gradient(150deg,rgba(185,140,255,.14),var(--panel) 58%)}
+.p.warn{border-color:rgba(255,92,157,.4);background:linear-gradient(150deg,rgba(255,92,157,.12),var(--panel) 58%)}
+.p.flat{background:rgba(255,255,255,.028)}
+.p-h{display:flex;align-items:center;justify-content:space-between;gap:1.2cqi;
+  padding-bottom:.85cqi;border-bottom:.09cqi solid var(--edge)}
+.p-t{font-family:var(--mono);font-weight:700;font-size:.7cqi;letter-spacing:.2em;text-transform:uppercase;color:var(--cyan)}
+.p.vio .p-t{color:var(--lilac)} .p.warn .p-t{color:var(--pink)}
+.p-n{font-family:var(--mono);font-size:.68cqi;color:var(--dim);font-variant-numeric:tabular-nums}
+.p h3{font-family:var(--display);font-weight:800;font-size:1.28cqi;line-height:1.25;letter-spacing:-.025em}
+.p p{font-size:.84cqi;line-height:1.55;color:var(--mut)}
+.p p b{color:var(--ink);font-weight:600}
+.p .cy{color:var(--cyan)} .p .li{color:var(--lilac)} .p .pk{color:var(--pink)}
+code{font-family:var(--mono);font-size:.92em;color:var(--cyan)}
+
+/* 스탯 */
+.stat{display:flex;flex-direction:column;justify-content:center;gap:.7cqi}
+.stat b{font-family:var(--mono);font-weight:700;font-size:3.4cqi;line-height:.94;letter-spacing:-.05em;
+  font-variant-numeric:tabular-nums;color:var(--cyan);text-shadow:0 0 2.4cqi rgba(0,229,209,.45)}
+.stat.v b{color:var(--lilac);text-shadow:0 0 2.4cqi rgba(185,140,255,.45)}
+.stat.p b{color:var(--pink);text-shadow:0 0 2.4cqi rgba(255,92,157,.4)}
+.stat b .u{font-size:.34em;color:var(--mut);letter-spacing:0;text-shadow:none;margin-left:.15em}
+.stat span{font-size:.8cqi;line-height:1.45;color:var(--mut)}
+.stat.big b{font-size:5cqi}
+.stat.sm b{font-size:2.3cqi}
+
+/* 표 */
+.tb{width:100%;font-size:.8cqi}
+.tb th{font-family:var(--mono);font-weight:700;font-size:.66cqi;letter-spacing:.13em;text-transform:uppercase;
+  color:var(--dim);text-align:left;padding:.55cqi .7cqi;border-bottom:.09cqi solid var(--edge)}
+.tb th.r,.tb td.r{text-align:right;font-variant-numeric:tabular-nums}
+.tb td{padding:.62cqi .7cqi;border-bottom:.07cqi solid rgba(240,236,255,.07);color:var(--mut)}
+.tb tr:last-child td{border-bottom:0}
+.tb td.k{color:var(--ink);font-weight:500}
+.tb td.n{font-family:var(--mono);font-weight:700;color:var(--ink)}
+.tb tr.hi td{background:rgba(0,229,209,.09)}
+.tb tr.hi td.n{color:var(--cyan)}
+.tb tr.dn td.n{color:var(--pink)}
+
+/* 막대 */
+.bars{display:flex;flex-direction:column;justify-content:center;gap:.72cqi;flex:1;min-height:0}
+.bar{display:grid;grid-template-columns:6.6cqi 1fr 4.4cqi;gap:1cqi;align-items:center;font-size:.76cqi;color:var(--mut)}
+.bar .lb{text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bar .tk{height:.95cqi;border-radius:.5cqi;background:rgba(240,236,255,.09);overflow:hidden}
+.bar .tk i{display:block;height:100%;width:var(--w);border-radius:inherit;transform:scaleX(0);transform-origin:left;
+  background:linear-gradient(90deg,var(--violet),var(--lilac))}
+.on .bar .tk i{animation:gx .8s var(--ease) forwards;animation-delay:calc(var(--i,0)*45ms + .25s)}
+.bar.hi .tk i{background:linear-gradient(90deg,var(--cyan),#7ff5e8);box-shadow:0 0 1.4cqi rgba(0,229,209,.55)}
+.bar .vv{text-align:right;font-family:var(--mono);font-weight:700;font-size:.74cqi;font-variant-numeric:tabular-nums}
+.bar.hi .vv{color:var(--cyan)}
+@keyframes gx{to{transform:scaleX(1)}}
+
+/* 타일 그리드 */
+.tiles{display:grid;gap:.85cqi;min-height:0}
+.tile{position:relative;padding:1.15cqi 1.2cqi;border:.09cqi solid var(--edge);border-radius:1.1cqi;
+  background:var(--panel);overflow:hidden;display:flex;flex-direction:column;justify-content:center;gap:.5cqi}
+.tile::after{content:"";position:absolute;left:0;bottom:0;height:.28cqi;width:100%;
+  background:var(--tn,var(--violet));transform:scaleX(var(--f,.25));transform-origin:left}
+.tile b{font-family:var(--mono);font-weight:700;font-size:1.75cqi;line-height:1;letter-spacing:-.04em;
+  font-variant-numeric:tabular-nums;color:var(--tn,var(--lilac))}
+.tile span{font-size:.74cqi;line-height:1.3;color:var(--mut)}
+.tile.top{background:linear-gradient(150deg,rgba(0,229,209,.14),var(--panel) 60%);border-color:var(--edge-lit)}
+
+/* 순서 박스 */
+.steps{display:grid;gap:.85cqi;min-height:0}
+.step{display:grid;grid-template-columns:2.6cqi 1fr;gap:1.1cqi;align-items:center;
+  padding:1.05cqi 1.3cqi;border:.09cqi solid var(--edge);border-radius:1.1cqi;background:var(--panel)}
+.step em{font-style:normal;display:grid;place-items:center;width:2.6cqi;height:2.6cqi;border-radius:.7cqi;
+  background:linear-gradient(140deg,var(--violet),var(--cyan));color:#0a0618;
+  font-family:var(--mono);font-weight:700;font-size:.92cqi}
+.step b{display:block;font-family:var(--display);font-weight:800;font-size:1.05cqi;letter-spacing:-.02em}
+.step span{display:block;margin-top:.28cqi;font-size:.76cqi;line-height:1.45;color:var(--mut)}
+
+/* 코드 */
+pre{padding:1.25cqi 1.4cqi;border:.09cqi solid var(--edge);border-left:.28cqi solid var(--cyan);
+  border-radius:.9cqi;background:rgba(5,3,14,.7);font-family:var(--mono);font-size:.72cqi;
+  line-height:1.75;color:#cfe6ff;overflow:auto;flex:1;min-height:0}
+pre .c{color:var(--dim)} pre .s{color:var(--lime)} pre .k{color:var(--cyan)} pre .v{color:var(--lilac)}
+
+/* 브라우저 목업 */
+.br{flex:1;min-height:0;display:flex;flex-direction:column;border:.09cqi solid var(--edge);
+  border-radius:1cqi;overflow:hidden;background:rgba(5,3,14,.5)}
+.br-bar{display:flex;align-items:center;gap:.5cqi;padding:.7cqi .9cqi;border-bottom:.09cqi solid var(--edge);
+  background:rgba(255,255,255,.04)}
+.br-bar i{width:.6cqi;height:.6cqi;border-radius:50%;background:rgba(240,236,255,.2)}
+.br-bar i:first-child{background:var(--pink)}.br-bar i:nth-child(2){background:var(--lime)}.br-bar i:nth-child(3){background:var(--cyan)}
+.br-url{margin-left:.6cqi;padding:.28cqi .9cqi;border-radius:99px;background:rgba(240,236,255,.07);
+  font-family:var(--mono);font-size:.64cqi;color:var(--mut)}
+.br-body{flex:1;min-height:0;padding:1.1cqi;display:flex;flex-direction:column;gap:.9cqi}
+.br-search{display:flex;align-items:center;gap:.8cqi;padding:.8cqi 1.1cqi;border-radius:.7cqi;
+  background:rgba(240,236,255,.06);border:.09cqi solid var(--edge);font-size:.78cqi;color:var(--dim)}
+.br-search .mg{width:1cqi;height:1cqi;border:.16cqi solid var(--cyan);border-radius:50%;position:relative;flex:0 0 auto}
+.br-search .mg::after{content:"";position:absolute;right:-.42cqi;bottom:-.24cqi;width:.5cqi;height:.16cqi;
+  background:var(--cyan);transform:rotate(45deg)}
+.br-tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:.75cqi}
+.br-tile{padding:.9cqi;border-radius:.8cqi;border:.09cqi solid var(--edge);background:rgba(240,236,255,.045);text-align:center}
+.br-tile.hi{border-color:var(--edge-lit);background:linear-gradient(150deg,rgba(0,229,209,.16),rgba(240,236,255,.04) 60%)}
+.br-tile b{display:block;font-family:var(--mono);font-weight:700;font-size:1.5cqi;letter-spacing:-.04em;font-variant-numeric:tabular-nums}
+.br-tile.hi b{color:var(--cyan);text-shadow:0 0 1.6cqi rgba(0,229,209,.5)}
+.br-tile span{display:block;margin-top:.42cqi;font-size:.66cqi;color:var(--mut)}
+.br-chips{display:flex;flex-wrap:wrap;gap:.42cqi;margin-top:auto}
+.chip{display:flex;align-items:baseline;gap:.42cqi;padding:.38cqi .8cqi;border-radius:99px;
+  border:.09cqi solid var(--edge);background:rgba(240,236,255,.03);font-size:.66cqi;color:var(--mut)}
+.chip b{font-family:var(--mono);font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums}
+.chip.hi{border-color:var(--edge-lit);background:rgba(0,229,209,.12)}.chip.hi b{color:var(--cyan)}
+
+/* 스크린샷 슬롯 */
+.shot{position:relative;flex:1;min-height:0;border-radius:1cqi;overflow:hidden;border:.09cqi solid var(--edge);background:rgba(5,3,14,.5)}
+.shot img{display:block;width:100%;height:100%;object-fit:cover;object-position:top center}
+.shot figcaption{position:absolute;left:0;right:0;bottom:0;padding:.85cqi 1cqi;
+  background:linear-gradient(transparent,rgba(5,3,14,.94) 60%);font-size:.72cqi;color:var(--ink)}
+.shot-ph{display:none;position:absolute;inset:0;place-items:center;text-align:center;padding:1.4cqi;
+  background:repeating-linear-gradient(135deg,rgba(240,236,255,.03) 0 .8cqi,transparent .8cqi 1.6cqi)}
+.shot-ph b{display:block;font-family:var(--display);font-weight:800;font-size:1cqi}
+.shot-ph code{display:block;margin-top:.6cqi;font-size:.72cqi}
+.shot.missing img{visibility:hidden}
+.shot.missing .shot-ph{display:grid}
+.shot.missing figcaption{display:none}
+
+/* 곡선 */
+.curve{flex:1;min-height:0;position:relative}
+.curve svg{width:100%;height:100%;display:block;overflow:visible}
+.curve .gl{stroke:rgba(240,236,255,.08);stroke-width:1;vector-effect:non-scaling-stroke}
+.curve .ln{fill:none;stroke:var(--cyan);stroke-width:2.4;stroke-linejoin:round;stroke-linecap:round;
+  vector-effect:non-scaling-stroke;stroke-dasharray:340;stroke-dashoffset:340;
+  filter:drop-shadow(0 0 .5cqi rgba(0,229,209,.8))}
+.on .curve .ln{animation:dw 1.5s var(--ease) .3s forwards}
+@keyframes dw{to{stroke-dashoffset:0}}
+.curve .ar{fill:url(#cg);opacity:0}
+.on .curve .ar{animation:fi .8s ease 1.1s forwards}
+@keyframes fi{to{opacity:1}}
+.ax{display:flex;justify-content:space-between;font-family:var(--mono);font-size:.64cqi;color:var(--dim)}
+
+/* 흐름 */
+.flow{display:grid;gap:.7cqi;align-content:center;flex:1;min-height:0}
+.fnode{display:flex;align-items:center;gap:1cqi;padding:.9cqi 1.2cqi;border-radius:.9cqi;
+  border:.09cqi solid var(--edge);background:rgba(240,236,255,.04);font-size:.82cqi}
+.fnode em{font-style:normal;font-family:var(--mono);font-size:.66cqi;color:var(--cyan);flex:0 0 auto;width:6cqi}
+.fnode b{font-weight:600;color:var(--ink)}
+.farrow{text-align:center;font-family:var(--mono);font-size:.9cqi;color:var(--lilac);line-height:1}
+
+/* 데모 */
+.demo{flex:1;min-height:0;display:grid;place-items:center;border-radius:1.2cqi;
+  border:.14cqi dashed rgba(240,236,255,.24);text-align:center;padding:2cqi;
+  background:repeating-linear-gradient(135deg,rgba(240,236,255,.025) 0 .9cqi,transparent .9cqi 1.8cqi)}
+.demo video{width:100%;height:100%;object-fit:contain;border-radius:1cqi;background:#000}
+.demo .ph b{display:block;font-family:var(--display);font-weight:800;font-size:1.5cqi}
+.demo .ph p{margin-top:.8cqi;font-size:.84cqi;color:var(--mut);line-height:1.6}
+.rec{display:inline-block;width:.62cqi;height:.62cqi;border-radius:50%;background:var(--pink);
+  box-shadow:0 0 1cqi var(--pink);flex:0 0 auto}
+.on .rec{animation:bl 1.6s ease-in-out infinite}
+@keyframes bl{0%,100%{opacity:1}50%{opacity:.2}}
+
+/* 표지 */
+.hero{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr);gap:3cqi;align-items:center;height:100%}
+.wm{font-family:var(--display);font-weight:900;font-size:6.4cqi;line-height:.93;letter-spacing:-.055em}
+.wm .g{background:linear-gradient(96deg,var(--cyan),var(--lilac));-webkit-background-clip:text;background-clip:text;color:transparent}
+.hero-sub{margin-top:1.1cqi;font-family:var(--mono);font-size:.86cqi;letter-spacing:.2em;text-transform:uppercase;color:var(--cyan)}
+.hero-claim{margin-top:2cqi;font-family:var(--display);font-weight:800;font-size:2cqi;line-height:1.3;letter-spacing:-.03em}
+.hero-claim span{background:linear-gradient(96deg,var(--cyan),var(--lilac));-webkit-background-clip:text;background-clip:text;color:transparent}
+.hero-strip{display:grid;grid-template-columns:repeat(4,1fr);gap:.85cqi;margin-top:2.4cqi}
+.by{display:flex;align-items:center;gap:1.2cqi;margin-top:2cqi;padding-top:1.2cqi;border-top:.09cqi solid var(--edge)}
+.by small{font-family:var(--mono);font-size:.66cqi;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+.by .o{font-size:.84cqi;color:var(--mut)}
+.by .sp{width:.09cqi;align-self:stretch;background:var(--edge)}
+.by strong{font-family:var(--display);font-weight:900;font-size:1.7cqi;letter-spacing:-.03em}
+#field{display:block;width:100%;height:auto;aspect-ratio:1/1;max-height:52cqi;justify-self:end}
+
+/* 마무리 */
+.close{display:flex;flex-direction:column;justify-content:center;gap:2.2cqi;height:100%}
+.close h2{font-size:4cqi}
+
+/* 진입 모션 */
+.up{opacity:0;transform:translateY(1.1cqi)}
+.on .up{animation:uu .55s var(--ease) forwards;animation-delay:calc(var(--i,0)*48ms + .08s)}
+@keyframes uu{to{opacity:1;transform:none}}
+
+/* 컨트롤 */
+.bar-ui{position:fixed;left:50%;bottom:max(10px,env(safe-area-inset-bottom));z-index:30;transform:translateX(-50%);
+  display:flex;align-items:center;gap:4px;padding:5px;border:1px solid rgba(240,236,255,.2);border-radius:999px;
+  background:rgba(10,6,24,.92);backdrop-filter:blur(14px);box-shadow:0 14px 44px rgba(0,0,0,.6)}
+.bar-ui button{min-width:34px;height:32px;padding:0 11px;border-radius:999px;cursor:pointer;
+  font-family:var(--mono);font-size:12px;font-weight:700;color:var(--ink);transition:background .15s}
+.bar-ui button:hover:not(:disabled){background:rgba(240,236,255,.12)}
+.bar-ui button:disabled{opacity:.3;cursor:not-allowed}
+.bar-ui .ct{min-width:62px;text-align:center;font-family:var(--mono);font-size:11.5px;font-weight:700;
+  color:var(--mut);font-variant-numeric:tabular-nums}
+.bar-ui .tm{min-width:64px;text-align:center;font-family:var(--mono);font-size:12.5px;font-weight:700;
+  color:var(--cyan);font-variant-numeric:tabular-nums;cursor:pointer;border-radius:999px;height:32px;padding:0 10px}
+.bar-ui .tm.run{color:var(--lime)} .bar-ui .tm.over{color:var(--pink)}
+.bar-ui .dv{width:1px;height:20px;background:rgba(240,236,255,.2);margin:0 3px}
+.dots{position:fixed;right:max(8px,env(safe-area-inset-right));top:50%;z-index:30;transform:translateY(-50%);
+  display:flex;flex-direction:column;gap:2px;padding:6px 5px;border:1px solid rgba(240,236,255,.14);
+  border-radius:999px;background:rgba(10,6,24,.8);backdrop-filter:blur(10px)}
+.dots button{position:relative;width:18px;height:14px;cursor:pointer}
+.dots button::before{content:"";position:absolute;left:50%;top:50%;width:4px;height:4px;border-radius:50%;
+  background:var(--dim);transform:translate(-50%,-50%);transition:.2s var(--ease)}
+.dots button[aria-current="true"]::before{width:8px;height:8px;background:var(--cyan);box-shadow:0 0 10px var(--cyan)}
+.dots button::after{content:attr(data-t);position:absolute;right:26px;top:50%;transform:translate(6px,-50%);
+  padding:5px 9px;border-radius:5px;background:rgba(10,6,24,.97);border:1px solid rgba(240,236,255,.2);
+  font-family:var(--body);font-size:11px;white-space:nowrap;color:var(--ink);opacity:0;pointer-events:none;transition:.16s}
+.dots button:hover::after,.dots button:focus-visible::after{opacity:1;transform:translate(0,-50%)}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}
+  .up{opacity:1!important;transform:none!important}
+  .bar .tk i{transform:scaleX(1)!important}
+  .curve .ln{stroke-dashoffset:0!important}.curve .ar{opacity:1!important}
+}
+</style>
+</head>
+<body>
+
+
+<div class="stage">
+  <div class="frame">
+    <div class="progress"><i id="pbar"></i></div>
+    <main id="deck">
+
+      <!-- 01 표지 -->
+      <section class="slide on" data-t="표지" data-sec="TITLE">
+        <div></div>
+        <div class="body">
+          <div class="hero">
+            <div>
+              <p class="eyebrow up" style="--i:0">AI 챔피언 고급과정 2기 · 개인과제 2회차</p>
+              <h1 class="wm up" style="--i:1">Seoul<br><span class="g">OpenData</span><br>MCP</h1>
+              <p class="hero-sub up" style="--i:2">Model Context Protocol Server</p>
+              <p class="hero-claim up" style="--i:3">데이터 이름을 몰라도,<br><span>만들고 싶은 것</span>만 말하면 됩니다.</p>
+              <div class="hero-strip">
+                <div class="tile up" style="--i:4;--tn:var(--cyan);--f:1"><b>8,266</b><span>공공데이터</span></div>
+                <div class="tile up" style="--i:5;--f:.8"><b>16,577</b><span>서비스</span></div>
+                <div class="tile up" style="--i:6;--f:.6"><b>313.6억</b><span>누적 이용</span></div>
+                <div class="tile up" style="--i:7;--f:.4"><b>5</b><span>MCP 도구</span></div>
+              </div>
+              <div class="by up" style="--i:8">
+                <div><small>서울 열린데이터광장</small><div class="o">data.seoul.go.kr · 자연어 탐색</div></div>
+                <div class="sp"></div><strong>강유진</strong>
+              </div>
+            </div>
+            <canvas id="field" width="700" height="700" aria-hidden="true"></canvas>
+          </div>
+        </div>
+      </section>
+
+      <!-- 02 열린데이터광장 -->
+      <section class="slide" data-t="열린데이터광장" data-sec="PLAZA">
+        <div class="head">
+          <div><p class="eyebrow up" style="--i:0">The Plaza · data.seoul.go.kr</p>
+            <h2 class="up" style="--i:1">서울시가 직접 운영하는 <em>공공데이터 창구</em></h2></div>
+          <p class="head-note up" style="--i:2">출처 — 서울시 「열린데이터광장<br>공공데이터 현황」 <b>2026. 7. 31. 기준</b></p>
+        </div>
+        <div class="body fill cC">
+          <div class="p up" style="--i:2">
+            <div class="p-h"><span class="p-t">data.seoul.go.kr</span><span class="p-n">메인 화면</span></div>
+            <figure class="shot">
+              <img src="assets/1.jpg" data-alts="assets/1.png|assets/1.jpeg|assets/plaza-main.png|assets/plaza-main.jpg" alt="서울 열린데이터광장 메인 화면 — 공공데이터 8,255건, 서비스 16,579개와 12개 분야별 보유 건수">
+              <figcaption>검색창 · 데이터 현황 · 12개 분야별 보유 건수를 한 화면에서 제공</figcaption>
+              <div class="shot-ph"><b>열린데이터광장 메인 화면</b><code>assets/1.jpg</code></div>
+            </figure>
+          </div>
+          <div class="fill" style="grid-template-rows:auto minmax(0,1fr) auto">
+            <div class="fill c3">
+              <div class="p lit stat sm up" style="--i:3"><b>8,266</b><span>공공데이터</span></div>
+              <div class="p stat sm v up" style="--i:4"><b>16,577</b><span>서비스</span></div>
+              <div class="p stat sm v up" style="--i:5"><b>34<span class="u">%</span></b><span>OpenAPI 비율</span></div>
+            </div>
+            <div class="p up" style="--i:6">
+              <div class="p-h"><span class="p-t">제공 주체별</span><span class="p-n">단위 : 건</span></div>
+              <table class="tb">
+                <tr class="hi"><td class="k">자치구 및 자치구산하</td><td class="n r">4,209</td></tr>
+                <tr><td class="k">서울시 본청 · 사업소</td><td class="n r">3,525</td></tr>
+                <tr><td class="k">투자출연기관</td><td class="n r">364</td></tr>
+                <tr><td class="k">공공기관(외부)</td><td class="n r">159</td></tr>
+                <tr><td class="k">민간(기업)</td><td class="n r">2</td></tr>
+              </table>
+            </div>
+            <div class="p lit up" style="--i:7">
+              <p><b class="cy">자치구 데이터가 본청보다 많다.</b> 25개 자치구가 각자 등록하기 때문이며, 기관 단위로 범위를 좁히는 기능이 필요한 구조적 이유다.</p>
+              <p style="font-size:.72cqi;color:var(--dim)">타 지자체 — 부산 12,411 · 인천 4,379　|　해외 — 뉴욕 3,014 · 런던 1,301</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 03 분야별 -->
+      <section class="slide" data-t="분야별 데이터" data-sec="DOMAINS">
+        <div class="head">
+          <div><p class="eyebrow up" style="--i:0">Domains</p>
+            <h2 class="up" style="--i:1">12개 정책분야에 시민 생활 <em>전 영역</em>이 담겨 있습니다</h2></div>
+          <p class="head-note up" style="--i:2">막대는 분야별 보유 건수 비율<br>홈페이지 표기 기준 (8,255건 시점)</p>
+        </div>
+        <div class="body fill" style="grid-template-rows:minmax(0,1fr) auto">
+          <div class="tiles c6" style="grid-template-rows:1fr 1fr">
+            <div class="tile top up" style="--i:2;--tn:var(--cyan);--f:1"><b>1,800</b><span>보건</span></div>
+            <div class="tile top up" style="--i:3;--tn:var(--cyan);--f:.91"><b>1,633</b><span>문화/관광</span></div>
+            <div class="tile top up" style="--i:4;--tn:var(--cyan);--f:.52"><b>936</b><span>산업/경제</span></div>
+            <div class="tile up" style="--i:5;--f:.36"><b>648</b><span>복지</span></div>
+            <div class="tile up" style="--i:6;--f:.35"><b>625</b><span>교육</span></div>
+            <div class="tile up" style="--i:7;--f:.34"><b>605</b><span>환경</span></div>
+            <div class="tile up" style="--i:8;--f:.32"><b>569</b><span>교통</span></div>
+            <div class="tile up" style="--i:9;--f:.31"><b>550</b><span>일반행정</span></div>
+            <div class="tile up" style="--i:10;--f:.14"><b>256</b><span>인구/가구</span></div>
+            <div class="tile up" style="--i:11;--f:.14"><b>244</b><span>안전</span></div>
+            <div class="tile up" style="--i:12;--f:.13"><b>233</b><span>도시관리</span></div>
+            <div class="tile up" style="--i:13;--f:.09"><b>156</b><span>주택/건설</span></div>
+          </div>
+          <div class="p vio up" style="--i:14">
+            <p><b class="li">보유량 1~3위는 보건 · 문화/관광 · 산업경제.</b> 그런데 뒤에서 보듯 <b>실제 이용은 전혀 다른 분야에 쏠려 있다.</b> 본 MCP는 이 분야 정보를 카탈로그 <code>MAP_CATE_NM</code> 필드에서 그대로 읽어 분류하며, 근거가 없으면 미분류로 남긴다.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 04 대표 데이터 -->
+      <section class="slide" data-t="대표 데이터" data-sec="FLAGSHIP">
+        <div class="head">
+          <div><p class="eyebrow vio up" style="--i:0">Flagship Data</p>
+            <h2 class="up" style="--i:1">서울시만 가진 <em>고유 데이터</em>가 있습니다</h2></div>
+          <p class="head-note up" style="--i:2">주민등록인구가 아니라<br><b>그 시각 그 자리에 실제로 있는 사람</b></p>
+        </div>
+        <div class="body fill cC">
+          <div class="p up" style="--i:2">
+            <div class="p-h"><span class="p-t">서울 생활인구</span><span class="p-n">2026. 08. 23. 기준</span></div>
+            <figure class="shot">
+              <img src="assets/2.png" data-alts="assets/2.jpg|assets/2.jpeg|assets/plaza-living-population.png|assets/plaza-living-population.jpg" alt="서울 생활인구 현황 — 일일평균 생활인구 11,005천명">
+              <figcaption>공공빅데이터와 통신데이터로 추계한, 그 시각 서울에 실제로 있는 인구</figcaption>
+              <div class="shot-ph"><b>서울 생활인구 화면</b><code>assets/2.png</code></div>
+            </figure>
+          </div>
+          <div class="fill" style="grid-template-rows:auto auto minmax(0,1fr)">
+            <div class="fill c2">
+              <div class="p lit stat sm up" style="--i:3"><b>11,005<span class="u">천명</span></b><span>일일평균 생활인구</span></div>
+              <div class="p stat sm v up" style="--i:4"><b>1,416<span class="u">천명</span></b><span>일일 최대–최소 격차</span></div>
+            </div>
+            <div class="fill c2">
+              <div class="p stat sm v up" style="--i:5"><b>250<span class="u">m</span></b><span>격자 공간 해상도</span></div>
+              <div class="p stat sm v up" style="--i:6"><b>4,274<span class="u">만건</span></b><span>수도권 생활이동 일 유입</span></div>
+            </div>
+            <div class="p lit up" style="--i:7">
+              <p><b class="cy">주민등록인구가 아니라 “그 시각 그 자리에 실제로 있는 사람”</b>을 추계한 데이터다. 상권 분석, 재난 대응, 시설 배치의 기준이 된다.</p>
+              <p>수도권 생활이동은 출근·등교·귀가·쇼핑 등 <b>7개 목적별 이동</b>을 담는다. 서울시가 통신·카드사와 결합해 만든, <b>다른 곳에서는 구할 수 없는 데이터</b>다.</p>
+              <p style="font-size:.72cqi;color:var(--dim)">이런 데이터가 있다는 사실 자체를 모르는 것이 가장 큰 손실이다.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 05 문제 정의 -->
+      <section class="slide" data-t="문제 정의" data-sec="PROBLEM">
+        <div class="head">
+          <div><p class="eyebrow up" style="--i:0">Problem</p>
+            <h2 class="up" style="--i:1">쓸 수 있는 데이터가 있어도,<br><span class="pk">찾지 못하면 없는 것</span>과 같습니다</h2></div>
+        </div>
+        <div class="body fill" style="grid-template-rows:minmax(0,1.35fr) minmax(0,1fr)">
+          <div class="p lit up" style="--i:2">
+            <div class="p-h"><span class="p-t">주제 및 문제정의</span><span class="p-n">One sentence</span></div>
+            <p style="font-family:var(--display);font-weight:800;font-size:1.85cqi;line-height:1.45;color:var(--ink);letter-spacing:-.025em;margin-top:.4cqi">
+              “서울시 공공데이터 <span class="cy">8,266건</span> 중 필요한 데이터를 찾으려면 사용자가 <span class="cy">정확한 서비스명을 이미 알고 있어야 하고</span>, API·파일 형식 혼재와 담당부서 확인의 번거로움이 데이터 활용의 <span class="pk">진입장벽</span>이 된다.”
+            </p>
+          </div>
+          <div class="fill c3">
+            <div class="p up" style="--i:3"><h3 class="cy">출발점이 없다</h3><p>만들고 싶은 서비스는 머릿속에 있는데, <b>검색창에 넣을 단어를 모른다.</b> 키워드 매칭 검색은 여기서 작동하지 않는다.</p></div>
+            <div class="p up" style="--i:4"><h3 class="cy">형식을 알 수 없다</h3><p>OpenAPI는 전체 서비스 16,577개 중 <b>34%</b>뿐. 검색 결과마다 API인지 파일인지 눈으로 골라내야 한다.</p></div>
+            <div class="p up" style="--i:5"><h3 class="cy">살아있는지 모른다</h3><p>매년 수십~수백 건이 <b>종료</b>된다. 목록에 있다고 지금도 쓸 수 있는 데이터가 아니다.</p></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 06 이용 현황 -->
+      <section class="slide" data-t="이용 현황" data-sec="DEMAND">
+        <div class="head">
+          <div><p class="eyebrow up" style="--i:0">Demand</p>
+            <h2 class="up" style="--i:1">이미 <em>313억 건</em>이 쓰였습니다. 다만 <span class="pk">쏠려 있습니다</span></h2></div>
+          <p class="head-note up" style="--i:2">페이지뷰 + 다운로드 + 서비스 호출<br>단위 : 억건 · <b>2026. 7. 31. 기준</b></p>
+        </div>
+        <div class="body fill cA">
+          <div class="fill" style="grid-template-rows:minmax(0,1.25fr) auto">
+            <div class="p up" style="--i:2">
+              <div class="p-h"><span class="p-t">연도별 누적 이용</span><span class="p-n">2012 → 2026.7</span></div>
+              <div class="curve">
+                <svg viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label="2012년 0.85억건에서 2026년 313.6억건으로 증가한 누적 이용 곡선">
+                  <defs><linearGradient id="cg" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#00e5d1" stop-opacity=".38"></stop>
+                    <stop offset="100%" stop-color="#00e5d1" stop-opacity="0"></stop></linearGradient></defs>
+                  <line class="gl" x1="0" y1="25" x2="100" y2="25"></line>
+                  <line class="gl" x1="0" y1="50" x2="100" y2="50"></line>
+                  <line class="gl" x1="0" y1="75" x2="100" y2="75"></line>
+                  <polygon class="ar" points="0,99.7 7.1,99 14.3,98 21.4,96.4 28.6,92.8 35.7,86.8 42.9,78.9 50,68.7 57.1,61.7 64.3,52.8 71.4,44.9 78.6,34.6 85.7,22 92.9,7.5 100,0 100,100 0,100"></polygon>
+                  <polyline class="ln" points="0,99.7 7.1,99 14.3,98 21.4,96.4 28.6,92.8 35.7,86.8 42.9,78.9 50,68.7 57.1,61.7 64.3,52.8 71.4,44.9 78.6,34.6 85.7,22 92.9,7.5 100,0"></polyline>
+                </svg>
+              </div>
+              <div class="ax"><span>2012 · 0.85억</span><span>2020 · 120억</span><span>2026.7 · 313.6억</span></div>
+            </div>
+            <div class="fill c3">
+              <div class="p lit stat sm up" style="--i:4"><b>313.6<span class="u">억건</span></b><span>누적 이용</span></div>
+              <div class="p stat sm v up" style="--i:5"><b>201<span class="u">만명</span></b><span>2025년 연간 방문자</span></div>
+              <div class="p stat sm v up" style="--i:6"><b>5,649<span class="u">명</span></b><span>2026년 일평균 방문자</span></div>
+            </div>
+          </div>
+          <div class="fill" style="grid-template-rows:minmax(0,1fr) auto">
+            <div class="p up" style="--i:3">
+              <div class="p-h"><span class="p-t">분야별 누적 이용</span><span class="p-n">단위 : 억건</span></div>
+              <div class="bars">
+                <div class="bar hi" style="--i:0"><span class="lb">교통</span><span class="tk"><i style="--w:100%"></i></span><span class="vv">215.9</span></div>
+                <div class="bar" style="--i:1"><span class="lb">환경</span><span class="tk"><i style="--w:38.2%"></i></span><span class="vv">82.5</span></div>
+                <div class="bar" style="--i:2"><span class="lb">문화/관광</span><span class="tk"><i style="--w:3.7%"></i></span><span class="vv">8.1</span></div>
+                <div class="bar" style="--i:3"><span class="lb">일반행정</span><span class="tk"><i style="--w:1.9%"></i></span><span class="vv">4.1</span></div>
+                <div class="bar" style="--i:4"><span class="lb">보건</span><span class="tk"><i style="--w:.3%"></i></span><span class="vv">0.65</span></div>
+                <div class="bar" style="--i:5"><span class="lb">그 외 7분야</span><span class="tk"><i style="--w:1.1%"></i></span><span class="vv">2.4</span></div>
+              </div>
+            </div>
+            <div class="p warn up" style="--i:7">
+              <p><b class="pk">교통 한 분야가 전체 이용의 68.9%.</b> 교통+환경이 95.2%다. 보유량 1위인 <b>보건 1,800건의 이용은 0.65억건</b>에 그친다. 공급은 8,266건인데 수요는 극소수에 쏠려 있다 — 없어서가 아니라 <b>못 찾아서</b>에 가깝다.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 07 개방·종료 -->
+      <section class="slide" data-t="개방·종료 현황" data-sec="CHURN">
+        <div class="head">
+          <div><p class="eyebrow up" style="--i:0">Churn</p>
+            <h2 class="up" style="--i:1">카탈로그는 <span class="pk">고정된 목록이 아닙니다</span></h2></div>
+          <p class="head-note up" style="--i:2">종료 사유 — CCTV 보안이슈, 정보시스템 폐기,<br>업무 종료, 비공개 전환 등</p>
+        </div>
+        <div class="body fill" style="grid-template-rows:auto minmax(0,1fr) auto">
+          <div class="fill c4">
+            <div class="p up" style="--i:2"><div class="p-h"><span class="p-t">2023</span></div>
+              <table class="tb"><tr><td>개방</td><td class="n r cy">525</td></tr><tr class="dn"><td>종료</td><td class="n r">110</td></tr>
+              <tr><td class="k">순증</td><td class="n r">+415</td></tr></table></div>
+            <div class="p up" style="--i:3"><div class="p-h"><span class="p-t">2024</span></div>
+              <table class="tb"><tr><td>개방</td><td class="n r cy">373</td></tr><tr class="dn"><td>종료</td><td class="n r">64</td></tr>
+              <tr><td class="k">순증</td><td class="n r">+309</td></tr></table></div>
+            <div class="p warn up" style="--i:4"><div class="p-h"><span class="p-t">2025</span></div>
+              <table class="tb"><tr><td>개방</td><td class="n r cy">277</td></tr><tr class="dn"><td>종료</td><td class="n r">173</td></tr>
+              <tr><td class="k">순증</td><td class="n r">+104</td></tr></table></div>
+            <div class="p warn up" style="--i:5"><div class="p-h"><span class="p-t">2026. 7.</span></div>
+              <table class="tb"><tr><td>개방</td><td class="n r cy">174</td></tr><tr class="dn"><td>종료</td><td class="n r">121</td></tr>
+              <tr><td class="k">순증</td><td class="n r">+53</td></tr></table></div>
+          </div>
+          <div class="fill c2">
+            <div class="p up" style="--i:6">
+              <div class="p-h"><span class="p-t">순증 추이</span><span class="p-n">단위 : 건</span></div>
+              <div class="bars">
+                <div class="bar" style="--i:0"><span class="lb">2023</span><span class="tk"><i style="--w:100%"></i></span><span class="vv">+415</span></div>
+                <div class="bar" style="--i:1"><span class="lb">2024</span><span class="tk"><i style="--w:74.5%"></i></span><span class="vv">+309</span></div>
+                <div class="bar" style="--i:2"><span class="lb">2025</span><span class="tk"><i style="--w:25.1%"></i></span><span class="vv">+104</span></div>
+                <div class="bar hi" style="--i:3"><span class="lb">2026.7</span><span class="tk"><i style="--w:12.8%"></i></span><span class="vv">+53</span></div>
+              </div>
+            </div>
+            <div class="p up" style="--i:7">
+              <div class="p-h"><span class="p-t">누적 개방</span><span class="p-n">단위 : 건</span></div>
+              <table class="tb">
+                <tr><td class="k">2023</td><td class="n r">7,800</td></tr>
+                <tr><td class="k">2024</td><td class="n r">8,109</td></tr>
+                <tr><td class="k">2025</td><td class="n r">8,213</td></tr>
+                <tr class="hi"><td class="k">2026. 7. 31.</td><td class="n r">8,266</td></tr>
+              </table>
+            </div>
+          </div>
+          <div class="p lit up" style="--i:8">
+            <p><b class="cy">그래서 “최근 갱신순 조회”가 부가 기능이 아니라 필수 기능이다.</b> 오래된 문서·블로그의 API 안내는 이미 종료된 것일 수 있다. 참고자료는 8,266건(2026.7.31), 홈페이지 실시간 표기는 8,255건 — <b>두 수치가 다른 것 자체가 카탈로그가 계속 움직인다는 증거다.</b></p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 08 한계 -->
+      <section class="slide" data-t="기존 검색의 한계" data-sec="FRICTION">
+        <div class="head">
+          <div><p class="eyebrow up" style="--i:0">Friction</p>
+            <h2 class="up" style="--i:1">검색은 되는데, <span class="pk">판단</span>이 안 됩니다</h2></div>
+        </div>
+        <div class="body fill" style="grid-template-rows:1fr 1fr">
+          <div class="fill c3">
+            <div class="p up" style="--i:2"><div class="p-h"><span class="p-t">01</span></div>
+              <h3>정확한 서비스명을 알아야 검색된다</h3><p>키워드 매칭 방식이라, 데이터명을 모르면 <b>출발점 자체가 없다.</b></p></div>
+            <div class="p up" style="--i:3"><div class="p-h"><span class="p-t">02</span></div>
+              <h3>파일과 API가 한 목록에 섞인다</h3><p>OpenAPI는 전체 서비스의 <b>34%</b>뿐 — 결과마다 형식을 눈으로 골라내야 한다.</p></div>
+            <div class="p up" style="--i:4"><div class="p-h"><span class="p-t">03</span></div>
+              <h3>살아있는 데이터인지 알기 어렵다</h3><p>매년 수십~수백 건이 종료되지만, 목록만으로는 <b>구분되지 않는다.</b></p></div>
+          </div>
+          <div class="fill c2">
+            <div class="p up" style="--i:5"><div class="p-h"><span class="p-t">04</span></div>
+              <h3>형식·담당부서 확인에 추가 이동이 필요하다</h3><p>데이터셋마다 상세페이지에 들어가야 API 여부와 담당부서 연락처를 알 수 있다. 후보가 10개면 10번 들어가야 한다.</p></div>
+            <div class="p warn up" style="--i:6"><div class="p-h"><span class="p-t">05</span></div>
+              <h3>외부 포털 색인만 믿으면 누락된다</h3><p>실제로 존재하는 API를 <b>“없다”고 판단하게 된다.</b> 다음 장이 이 프로젝트를 만들게 한 실제 사례다.</p></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 09 개발 계기 -->
+      <section class="slide" data-t="개발 계기" data-sec="ORIGIN">
+        <div class="head">
+          <div><p class="eyebrow up" style="--i:0">Origin</p>
+            <h2 class="up" style="--i:1">데이터 소스를 <em>전면 교체</em>하게 만든 한 번의 오답</h2></div>
+        </div>
+        <div class="body fill cB">
+          <div class="p warn up" style="--i:2">
+            <div class="p-h"><span class="p-t">The Question</span></div>
+            <p style="font-family:var(--display);font-weight:800;font-size:1.9cqi;line-height:1.35;color:var(--ink);letter-spacing:-.03em;margin-top:auto">
+              “서울 생활인구<br>250m 격자<br><span class="pk">API 있어?”</span></p>
+            <p style="margin-top:auto">공공데이터포털(data.go.kr) 색인 기반으로는 명확한 답을 주지 못했다. <b class="pk">→ 색인 누락</b></p>
+          </div>
+          <div class="steps" style="grid-template-rows:repeat(4,1fr)">
+            <div class="step up" style="--i:3"><em>1</em><div><b>초기 접근 — data.go.kr 통합 검색</b><span>서울시 등록분을 걸러내는 방식으로 시작 (서비스 ID 15112888)</span></div></div>
+            <div class="step up" style="--i:4"><em>2</em><div><b>한계 확인</b><span>색인 갱신 지연, 파일·API 여부가 불명확하게 노출되는 사례 다수</span></div></div>
+            <div class="step up" style="--i:5"><em>3</em><div><b>원천 API로 재검증</b><span>서울 열린데이터광장 <code>SearchCatalogService</code> 직접 호출</span></div></div>
+            <div class="step up" style="--i:6"><em>4</em><div><b>결론 — 해당 API는 실재했다</b><span><code>SRV_TYPE</code> 필드로 제공 형식이 명확히 기록돼 있음을 확인. 서울시 도구는 서울시 카탈로그를 원천으로 삼는다</span></div></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 10 해결 개념 -->
+      <section class="slide" data-t="해결 개념" data-sec="SHIFT">
+        <div class="head">
+          <div><p class="eyebrow vio up" style="--i:0">Shift</p>
+            <h2 class="up" style="--i:1">검색어를 짜내는 일에서, <em>한 문장을 말하는 일</em>로</h2></div>
+        </div>
+        <div class="body fill c2">
+          <div class="p up" style="--i:2">
+            <div class="p-h"><span class="p-t" style="color:var(--dim)">Before</span><span class="p-n">여러 화면 · 반복 이동</span></div>
+            <div class="flow">
+              <div class="fnode"><em>STEP 1</em><span>데이터광장 접속</span></div>
+              <div class="farrow">↓</div>
+              <div class="fnode"><em>STEP 2</em><span>맞는 <b>검색어를 추측</b>해 입력</span></div>
+              <div class="farrow">↓</div>
+              <div class="fnode"><em>STEP 3</em><span>목록에서 형식을 눈으로 구분</span></div>
+              <div class="farrow">↓</div>
+              <div class="fnode"><em>STEP 4</em><span>데이터셋마다 상세페이지 진입</span></div>
+              <div class="farrow">↓</div>
+              <div class="fnode"><em>STEP 5</em><span>담당부서·갱신주기 개별 확인</span></div>
+            </div>
+          </div>
+          <div class="p lit up" style="--i:3">
+            <div class="p-h"><span class="p-t">After · MCP</span><span class="p-n">실측 91ms</span></div>
+            <div class="flow">
+              <div class="fnode"><em>INPUT</em><span>AI 대화창에 <b>한 문장</b> 입력</span></div>
+              <div class="farrow">↓</div>
+              <div class="fnode"><em>AUTO</em><span>키워드 자동 추출 + 동의어 확장</span></div>
+              <div class="farrow">↓</div>
+              <div class="fnode"><em>AUTO</em><span>카탈로그 <b>병렬 검색</b> → 점수화</span></div>
+              <div class="farrow">↓</div>
+              <div class="fnode"><em>OUTPUT</em><span>형식·갱신주기·담당부서 동시 회신</span></div>
+              <div class="farrow">↓</div>
+              <div class="fnode"><em>OUTPUT</em><span>추천 <b>근거 문장</b>까지 함께 제시</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 11 시스템 구성 -->
+      <section class="slide" data-t="시스템 구성" data-sec="SYSTEM">
+        <div class="head">
+          <div><p class="eyebrow up" style="--i:0">Architecture</p>
+            <h2 class="up" style="--i:1">별도 서버 없이, AI 도구에 <em>직접 꽂히는</em> 구조</h2></div>
+        </div>
+        <div class="body fill cA">
+          <div class="p up" style="--i:2">
+            <div class="p-h"><span class="p-t">실행 구조</span><span class="p-n">stdio · HTTP GET</span></div>
+            <pre><span class="c">// AI 어시스턴트 (Claude · Cursor)</span>
+        │
+        │  <span class="k">MCP (stdio)</span>
+        ▼
+<span class="s">seoul-opendata-mcp</span>  <span class="c">— 사용자 PC에서 실행</span>
+   ├─ <span class="v">recommend_seoul_apis_for_idea</span>
+   ├─ <span class="v">search_seoul_datasets</span>
+   ├─ <span class="v">list_seoul_recent_updates</span>
+   ├─ <span class="v">get_seoul_dataset_detail</span>
+   └─ <span class="v">refine_seoul_recommendations</span>
+        │
+        │  <span class="k">HTTP GET</span>
+        ▼
+openapi.seoul.go.kr:8088
+   <span class="c">/{키}/json/</span><span class="s">SearchCatalogService</span>
+   <span class="c">/{시작}/{종료}/{ID}/{서비스명}/{기관명}/</span></pre>
+          </div>
+          <div class="fill" style="grid-template-rows:repeat(3,1fr)">
+            <div class="p up" style="--i:3"><div class="p-h"><span class="p-t">로컬 실행</span></div>
+              <h3>사용자 PC에서 stdio로 직접 실행</h3><p>중앙 서버를 운영하지 않는다. <b>설치자가 각자 자기 인증키로 자기 PC에서</b> 호출하므로 운영 비용이 들지 않고, 한 사람의 호출량이 다른 사용자에게 영향을 주지 않는다.</p></div>
+            <div class="p up" style="--i:4"><div class="p-h"><span class="p-t">원천 직결</span></div>
+              <h3>스크래핑 없이 공식 카탈로그 API만 사용</h3><p>HTML 파싱이 아니라 <code>SearchCatalogService</code> 응답 필드를 그대로 읽는다.</p></div>
+            <div class="p up" style="--i:5"><div class="p-h"><span class="p-t">안정성</span></div>
+              <h3>캐시 + 지수 백오프 재시도</h3><p>실시간 1분 · 검색/추천 5분 · 상세 30분 TTL. 5xx·네트워크 오류만 최대 3회 재시도.</p></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 12 도구 -->
+      <section class="slide" data-t="5개 도구" data-sec="TOOLS">
+        <div class="head">
+          <div><p class="eyebrow up" style="--i:0">Tools</p>
+            <h2 class="up" style="--i:1">AI가 상황에 맞게 골라 쓰는 <em>5개 도구</em></h2></div>
+          <p class="head-note up" style="--i:2">사용자는 도구 이름을 알 필요가 없다<br>질문 문장에 따라 <b>AI가 자동 선택</b></p>
+        </div>
+        <div class="body fill" style="grid-template-rows:repeat(5,1fr)">
+          <div class="p lit up" style="--i:2">
+            <div style="display:grid;grid-template-columns:16cqi 1fr;gap:1.6cqi;align-items:center;height:100%">
+              <code style="font-size:.8cqi;font-weight:700">recommend_seoul_<br>apis_for_idea</code>
+              <div><h3>아이디어 → 추천</h3><p>키워드 추출 · 동의어 확장 · 카탈로그 병렬 검색 · 점수화까지 한 번에. <b>이 도구 하나로 대부분의 질문이 해결된다.</b></p></div>
+            </div>
+          </div>
+          <div class="p up" style="--i:3">
+            <div style="display:grid;grid-template-columns:16cqi 1fr;gap:1.6cqi;align-items:center;height:100%">
+              <code style="font-size:.8cqi;font-weight:700">search_seoul_<br>datasets</code>
+              <div><h3>키워드 직접 검색</h3><p>조건에 맞는 <b>전체 건수(totalMatchCount)</b>를 함께 반환해, 지금 보고 있는 것이 전부인지 표본인지 알 수 있다.</p></div>
+            </div>
+          </div>
+          <div class="p lit up" style="--i:4">
+            <div style="display:grid;grid-template-columns:16cqi 1fr;gap:1.6cqi;align-items:center;height:100%">
+              <code style="font-size:.8cqi;font-weight:700">list_seoul_<br>recent_updates</code>
+              <div><h3>최근 갱신순 조회 <span class="cy" style="font-size:.7cqi">고유 기능</span></h3><p>매년 수백 건이 종료되는 카탈로그에서 <b>“살아있는 API”를 먼저 고른다.</b> 앞서 본 개방·종료 현황이 이 기능의 근거다.</p></div>
+            </div>
+          </div>
+          <div class="p up" style="--i:5">
+            <div style="display:grid;grid-template-columns:16cqi 1fr;gap:1.6cqi;align-items:center;height:100%">
+              <code style="font-size:.8cqi;font-weight:700">get_seoul_<br>dataset_detail</code>
+              <div><h3>단건 상세 조회</h3><p>제공기관 · <b>담당부서 · 연락처</b> · 갱신주기 · 최종갱신일 · SRV_TYPE을 서비스 ID 하나로 조회한다.</p></div>
+            </div>
+          </div>
+          <div class="p up" style="--i:6">
+            <div style="display:grid;grid-template-columns:16cqi 1fr;gap:1.6cqi;align-items:center;height:100%">
+              <code style="font-size:.8cqi;font-weight:700">refine_seoul_<br>recommendations</code>
+              <div><h3>이전 결과 재필터링</h3><p>외부 API를 다시 호출하지 않고 직전 결과를 좁혀 본다 — <b>호출·토큰 비용 절감.</b></p></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 13 추천 근거 -->
+      <section class="slide" data-t="추천 근거" data-sec="RANKING">
+        <div class="head">
+          <div><p class="eyebrow up" style="--i:0">Ranking</p>
+            <h2 class="up" style="--i:1">“왜 이게 1등인지”를 <em>사람이 읽을 수 있게</em> 돌려줍니다</h2></div>
+          <p class="head-note up" style="--i:2">배점 근거를 문장으로 함께 반환<br><b>보고서에 그대로 인용 가능</b></p>
+        </div>
+        <div class="body fill" style="grid-template-rows:minmax(0,1fr) auto">
+          <div class="fill c2">
+            <div class="p up" style="--i:2">
+              <div class="p-h"><span class="p-t">질문 관련도 · relevanceScore</span><span class="p-n">배점 합 80</span></div>
+              <table class="tb">
+                <tr class="hi"><td class="k">데이터명 · 키워드 · 동의어 일치</td><td class="n r">40</td></tr>
+                <tr><td class="k">정책분야(BRM) 일치</td><td class="n r">15</td></tr>
+                <tr><td class="k">지역조건 일치</td><td class="n r">10</td></tr>
+                <tr><td class="k">실시간성 요구 일치</td><td class="n r">10</td></tr>
+                <tr><td class="k">제공기관 조건 일치</td><td class="n r">5</td></tr>
+              </table>
+            </div>
+            <div class="p vio up" style="--i:3">
+              <div class="p-h"><span class="p-t">데이터 활용도 · qualityScore</span><span class="p-n">배점 합 65</span></div>
+              <table class="tb">
+                <tr class="hi"><td class="k">제공형식(OpenAPI/File/Sheet) 존재</td><td class="n r">15</td></tr>
+                <tr><td class="k">최신성 · 갱신주기</td><td class="n r">10 · 10</td></tr>
+                <tr><td class="k">제공기관 · 담당부서 존재</td><td class="n r">10</td></tr>
+                <tr><td class="k">메타정보 충실도</td><td class="n r">10</td></tr>
+                <tr><td class="k">문의처 · 공식 상세페이지</td><td class="n r">5 · 5</td></tr>
+              </table>
+            </div>
+          </div>
+          <div class="fill c2">
+            <div class="p lit up" style="--i:4">
+              <p><b class="cy">근거가 없으면 추측하지 않는다.</b> 정책분야는 카탈로그 <code>MAP_CATE_NM</code> 필드가 12개 분야와 <b>전 건 1:1로 일치</b>함을 전수 확인해 매핑하고, 매칭되지 않으면 <code>null</code>(미분류)로 남긴다. 공식 BRM 코드는 응답에 없으므로 임의 생성하지 않는다.</p>
+            </div>
+            <div class="p up" style="--i:5">
+              <p>실제 상태점검을 하지 않은 <b>API 가용성·갱신주기 준수 여부는 점수에 넣지 않는다.</b> 확인할 수 없는 것을 점수로 만들지 않는다는 원칙이다.</p>
+              <p style="font-size:.74cqi;color:var(--dim)">반환 필드 — <code>scoreBreakdown</code> · <code>relevanceReasons</code> · <code>qualityReasons</code> · <code>brm</code> · <code>organization</code></p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 14 성능 -->
+      <section class="slide" data-t="성능 지표" data-sec="MEASURED">
+        <div class="head">
+          <div><p class="eyebrow up" style="--i:0">Measured</p>
+            <h2 class="up" style="--i:1">체감이 아니라 <em>실측</em>으로</h2></div>
+          <p class="head-note up" style="--i:2">로컬 환경 · 2026-08-12<br>SearchCatalogService 실API 호출 기준</p>
+        </div>
+        <div class="body fill" style="grid-template-rows:minmax(0,1.15fr) minmax(0,1fr)">
+          <div class="fill c4">
+            <div class="p stat up" style="--i:2"><b>94<span class="u">ms</span></b><span>카탈로그 단건 조회<br>5회 평균</span></div>
+            <div class="p lit stat up" style="--i:3"><b>91<span class="u">ms</span></b><span>추천 질의 1회<br>키워드 5개 병렬 검색</span></div>
+            <div class="p stat v up" style="--i:4"><b>0<span class="u">ms대</span></b><span>동일 조건 재질의<br>외부 API 재호출 없음</span></div>
+            <div class="p stat v up" style="--i:5"><b>47</b><span>단위 테스트 100% 통과<br>push마다 CI 자동 검증</span></div>
+          </div>
+          <div class="fill c2">
+            <div class="p up" style="--i:6">
+              <div class="p-h"><span class="p-t">캐시 정책</span><span class="p-n">in-memory TTL</span></div>
+              <table class="tb">
+                <tr><td class="k">실시간성 키워드 질의</td><td class="n r">1분</td></tr>
+                <tr><td class="k">일반 검색 · 추천</td><td class="n r">5분</td></tr>
+                <tr><td class="k">상세 조회</td><td class="n r">30분</td></tr>
+                <tr><td class="k">재시도 (5xx · 네트워크)</td><td class="n r">최대 3회</td></tr>
+              </table>
+            </div>
+            <div class="p warn up" style="--i:7">
+              <div class="p-h"><span class="p-t">플랫폼 공식 제약</span><span class="p-n">Open API 소개</span></div>
+              <p>오픈API는 <b class="pk">한 번에 최대 1,000건</b>까지 요청 가능. 실시간 지하철 API는 하루 1,000건.</p>
+              <p>초과 요청은 자동 클램핑하고, 전체 건수가 상한을 넘으면 <b>“표본 내 정렬”</b>이라는 한계를 응답의 <code>note</code>에 명시한다.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 15 시민 활용 -->
+      <section class="slide" data-t="시민 활용방안" data-sec="CITIZEN">
+        <div class="head">
+          <div><p class="eyebrow up" style="--i:0">For Citizens</p>
+            <h2 class="up" style="--i:1">교통·환경에 쏠린 활용을, <em>나머지 8,000건</em>으로 넓히는 일</h2></div>
+        </div>
+        <div class="body fill" style="grid-template-rows:1fr 1fr">
+          <div class="fill c3">
+            <div class="p lit up" style="--i:2"><div class="p-h"><span class="p-t">안전</span></div>
+              <h3>등하굣길 안전 지도</h3><p>안전비상벨 설치위치, 자치구 CCTV·방범 데이터를 지도에 얹어 통학로를 점검한다.</p></div>
+            <div class="p up" style="--i:3"><div class="p-h"><span class="p-t">이동</span></div>
+              <h3>버스·따릉이 통합 도우미</h3><p>정류장 도착 버스와 근처 따릉이 잔여 대수를 한 화면에서. 실시간 데이터 우선 조회.</p></div>
+            <div class="p up" style="--i:4"><div class="p-h"><span class="p-t">생업</span></div>
+              <h3>우리 동네 창업 입지 분석</h3><p>생활인구(250m 격자)와 상권분석 데이터를 겹쳐 유동인구 대비 상권을 비교한다.</p></div>
+          </div>
+          <div class="fill c3">
+            <div class="p up" style="--i:5"><div class="p-h"><span class="p-t">행정</span></div>
+              <h3>자치구 인허가 대시보드</h3><p>자치구별 숙박업·위생업소 인허가 시리즈를 모아 비교. <b>자치구 데이터 4,209건</b>이 대상.</p></div>
+            <div class="p lit up" style="--i:6"><div class="p-h"><span class="p-t">보건</span></div>
+              <h3>잠자는 보건 데이터 1,800건</h3><p>보유량 1위지만 이용은 <b>0.65억건</b>. 의료기관·검진·감염병 데이터를 생활 서비스로 끌어낸다.</p></div>
+            <div class="p up" style="--i:7"><div class="p-h"><span class="p-t">실무</span></div>
+              <h3>살아있는 API만 골라 프로토타입</h3><p>최근 갱신순 조회로 운영이 활발한 API부터 붙여, 종료된 데이터에 시간을 쓰지 않는다.</p></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 16 설치 -->
+      <section class="slide" data-t="설치 방법" data-sec="INSTALL">
+        <div class="head">
+          <div><p class="eyebrow up" style="--i:0">Install</p>
+            <h2 class="up" style="--i:1">인증키 발급 후, <em>설치는 세 단계</em></h2></div>
+          <p class="head-note up" style="--i:2">등록 후 새 대화창에 <b>5개 도구</b>가<br>보이면 연동 성공</p>
+        </div>
+        <div class="body fill cA">
+          <div class="fill" style="grid-template-rows:auto minmax(0,1fr)">
+            <div class="steps">
+              <div class="step up" style="--i:2"><em>1</em><div><b>인증키 발급</b><span>data.seoul.go.kr → 마이페이지 → 인증키 신청. <b>일반 인증키</b>만 있으면 된다 (무료·즉시 신청)</span></div></div>
+              <div class="step up" style="--i:3"><em>2</em><div><b>빌드</b><span>Node.js 18 이상 · pnpm 필요</span></div></div>
+              <div class="step up" style="--i:4"><em>3</em><div><b>MCP 클라이언트에 등록</b><span>Claude Code · Desktop · Cursor 모두 동일한 dist/server.js 절대경로 사용</span></div></div>
+            </div>
+            <div class="fill c2">
+              <div class="p up" style="--i:5"><div class="p-h"><span class="p-t">빌드</span></div>
+                <pre>pnpm install
+pnpm build
+cp .env.example .env
+<span class="c"># SEOUL_OPEN_DATA_API_KEY 입력</span></pre></div>
+              <div class="p up" style="--i:6"><div class="p-h"><span class="p-t">Claude Code 등록</span></div>
+                <pre>claude mcp add \
+  seoul-opendata-mcp -s user \
+  -e SEOUL_OPEN_DATA_API_KEY=<span class="s">"발급키"</span> \
+  -- node <span class="s">"/절대경로/dist/server.js"</span></pre></div>
+            </div>
+          </div>
+          <div class="p up" style="--i:7">
+            <div class="p-h"><span class="p-t">Open API 소개</span><span class="p-n">인증키 신청 절차</span></div>
+            <figure class="shot">
+              <img src="assets/3.png" data-alts="assets/3.jpg|assets/3.jpeg|assets/plaza-openapi-guide.png|assets/plaza-openapi-guide.jpg" alt="열린데이터광장 Open API 소개 페이지 — 인증키 신청 절차 5단계">
+              <figcaption>접속 → 인증키 신청 → API 검색·확인 → 활용 → 애플리케이션 등록</figcaption>
+              <div class="shot-ph"><b>Open API 소개 화면</b><code>assets/3.png</code></div>
+            </figure>
+          </div>
+        </div>
+      </section>
+
+      <!-- 17 시연 -->
+      <section class="slide" data-t="시연" data-sec="DEMO">
+        <div class="head">
+          <div><p class="eyebrow up" style="--i:0"><span class="rec"></span> Live Demo</p>
+            <h2 class="up" style="--i:1">설치부터 질의까지, <em>실제 화면</em></h2></div>
+          <p class="head-note up" style="--i:2">① 인증키 → ② pnpm build → ③ claude mcp add<br>→ ④ 질의 → ⑤ <b>점수·근거·담당부서 확인</b></p>
+        </div>
+        <div class="body">
+          <div class="demo up" style="--i:2">
+            <video id="demoVideo" controls playsinline preload="metadata" hidden>
+              <source src="assets/demo.mp4" type="video/mp4">
+            </video>
+            <div class="ph" id="demoPlaceholder">
+              <b>시연 영상 자리</b>
+              <p>영상 파일을 <code>assets/demo.mp4</code> 로 저장하면 이 자리에 자동으로 재생 화면이 들어갑니다.</p>
+              <p style="color:var(--dim);margin-top:1.2cqi">예시 질의 — “생활인구 250m 격자 데이터로 유동인구를 분석하는 앱을 만들고 싶어. 관련 API 추천해줘.”</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 18 마무리 -->
+      <section class="slide" data-t="마무리" data-sec="CLOSING">
+        <div></div>
+        <div class="body">
+          <div class="close">
+            <div>
+              <p class="eyebrow up" style="--i:0">Seoul OpenData MCP</p>
+              <h2 class="up" style="--i:1">공급은 8,266건,<br>활용은 <span class="pk">몇 건에 쏠려</span> 있습니다</h2>
+              <p class="lead up" style="--i:2">그 격차의 상당 부분은 “없어서”가 아니라 <b>“못 찾아서”</b>다. 찾는 일의 비용을 낮추는 것이 이 도구의 목적이다.</p>
+            </div>
+            <div class="fill c4">
+              <div class="p lit up" style="--i:3"><h3 class="cy">원천 직결</h3><p>서울시 공식 카탈로그 API만을 근거로 판별</p></div>
+              <div class="p up" style="--i:4"><h3 class="li">추측 없음</h3><p>근거가 없으면 미분류로 남긴다</p></div>
+              <div class="p up" style="--i:5"><h3 class="li">근거 제시</h3><p>추천 이유를 문장으로 함께 반환</p></div>
+              <div class="p up" style="--i:6"><h3 class="li">즉시 사용</h3><p>설치 3단계 · 등록 한 줄</p></div>
+            </div>
+            <p class="up" style="--i:7;font-family:var(--mono);font-size:.8cqi;color:var(--dim)">
+              github.com/youjin8812-hub/seoul-opendata-mcp　·　MIT　·　강유진</p>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<nav class="dots" id="dots" aria-label="슬라이드 바로가기"></nav>
+<nav class="bar-ui" aria-label="발표 조작">
+  <button id="prev" aria-label="이전 슬라이드" title="이전 (←)">←</button>
+  <span class="ct" id="count">01 / 18</span>
+  <button id="next" aria-label="다음 슬라이드" title="다음 (→ / Space)">→</button>
+  <span class="dv"></span>
+  <button class="tm" id="timer" title="5분 타이머 시작·정지 (T) · 더블클릭 초기화">5:00</button>
+  <span class="dv"></span>
+  <button id="fs" aria-label="전체화면" title="전체화면 (F)">⛶</button>
+</nav>
+
+<script>
+(function(){
+  'use strict';
+  var slides = [].slice.call(document.querySelectorAll('.slide'));
+  var total = slides.length, i = 0;
+  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var pbar = document.getElementById('pbar'), count = document.getElementById('count');
+  var dots = document.getElementById('dots');
+  var prevBtn = document.getElementById('prev'), nextBtn = document.getElementById('next');
+  function pad(n){ return n < 10 ? '0' + n : '' + n; }
+
+  slides.forEach(function(s, n){
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.setAttribute('data-t', (n + 1) + '. ' + s.dataset.t);
+    b.setAttribute('aria-label', (n + 1) + '번 슬라이드: ' + s.dataset.t);
+    b.addEventListener('click', function(){ go(n); });
+    dots.appendChild(b);
+  });
+  var dotBtns = [].slice.call(dots.children);
+
+  function go(n){
+    i = Math.max(0, Math.min(total - 1, n));
+    slides.forEach(function(s, k){ s.classList.toggle('on', k === i); });
+    dotBtns.forEach(function(b, k){ b.setAttribute('aria-current', k === i ? 'true' : 'false'); });
+    count.textContent = pad(i + 1) + ' / ' + pad(total);
+    pbar.style.transform = 'scaleX(' + ((i + 1) / total) + ')';
+    prevBtn.disabled = i === 0;
+    nextBtn.disabled = i === total - 1;
+  }
+  prevBtn.addEventListener('click', function(){ go(i - 1); });
+  nextBtn.addEventListener('click', function(){ go(i + 1); });
+  document.getElementById('fs').addEventListener('click', function(){
+    if (!document.fullscreenElement) {
+      if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(function(){});
+    } else if (document.exitFullscreen) { document.exitFullscreen().catch(function(){}); }
+  });
+
+  var LIMIT = 300, left = LIMIT, tick = null, tEl = document.getElementById('timer');
+  function paint(){
+    var neg = left < 0, v = Math.abs(left);
+    tEl.textContent = (neg ? '+' : '') + Math.floor(v / 60) + ':' + pad(v % 60);
+    tEl.classList.toggle('over', neg);
+  }
+  function toggleTimer(){
+    if (tick) { clearInterval(tick); tick = null; tEl.classList.remove('run'); }
+    else { tEl.classList.add('run'); tick = setInterval(function(){ left--; paint(); }, 1000); }
+  }
+  tEl.addEventListener('click', toggleTimer);
+  tEl.addEventListener('dblclick', function(){
+    if (tick) { clearInterval(tick); tick = null; }
+    tEl.classList.remove('run'); left = LIMIT; paint();
+  });
+  paint();
+
+  [].slice.call(document.querySelectorAll('.shot')).forEach(function(fig){
+    var img = fig.querySelector('img');
+    var alts = (img.getAttribute('data-alts') || '').split('|').filter(Boolean);
+    var tried = 0;
+    img.addEventListener('error', function(){
+      if (tried < alts.length) { img.src = alts[tried++]; return; }
+      fig.classList.add('missing');
+    });
+    img.addEventListener('load', function(){ fig.classList.remove('missing'); });
+    if (img.complete && !img.naturalWidth) {
+      if (alts.length) { img.src = alts[tried++]; } else { fig.classList.add('missing'); }
+    }
+  });
+
+  var vid = document.getElementById('demoVideo'), ph = document.getElementById('demoPlaceholder');
+  vid.addEventListener('loadedmetadata', function(){ vid.hidden = false; ph.hidden = true; });
+
+  document.addEventListener('keydown', function(e){
+    if (e.altKey || e.ctrlKey || e.metaKey) return;
+    var k = e.key, t = e.target;
+    if (k === ' ' && t && t.closest && t.closest('button,a,input,textarea,video')) return;
+    if (k === 'ArrowRight' || k === 'ArrowDown' || k === 'PageDown' || k === ' ') { e.preventDefault(); go(i + 1); }
+    else if (k === 'ArrowLeft' || k === 'ArrowUp' || k === 'PageUp') { e.preventDefault(); go(i - 1); }
+    else if (k === 'Home') { e.preventDefault(); go(0); }
+    else if (k === 'End') { e.preventDefault(); go(total - 1); }
+    else if (k === 't' || k === 'T') { e.preventDefault(); toggleTimer(); }
+    else if (k === 'f' || k === 'F') { e.preventDefault(); document.getElementById('fs').click(); }
+  });
+
+  var cv = document.getElementById('field');
+  if (cv && cv.getContext) {
+    var ctx = cv.getContext('2d');
+    var W = cv.width, H = cv.height, N = 8266, PICK = 5;
+    var pts = new Array(N), cx = W / 2, cy = H / 2, R = W * 0.46;
+    for (var p = 0; p < N; p++) {
+      var a = Math.random() * Math.PI * 2, r = Math.sqrt(Math.random()) * R;
+      pts[p] = { x: cx + Math.cos(a) * r, y: cy + Math.sin(a) * r, ph: Math.random() * Math.PI * 2 };
+    }
+    var picks = [];
+    for (var q = 0; q < PICK; q++) {
+      picks.push({ idx: Math.floor(Math.random() * N), ty: cy - (PICK - 1) * 26 / 2 + q * 26, tx: cx });
+    }
+    var t0 = performance.now();
+    function frame(now){
+      var t = (now - t0) / 1000;
+      ctx.clearRect(0, 0, W, H);
+      ctx.fillStyle = 'rgba(169,159,208,.32)';
+      for (var m = 0; m < N; m += 3) {
+        var pt = pts[m];
+        var d = reduce ? 0 : Math.sin(t * .5 + pt.ph) * 1.6;
+        ctx.fillRect(pt.x + d, pt.y + d, 1.5, 1.5);
+      }
+      var prog = reduce ? 1 : Math.min(1, Math.max(0, (t - 1.1) / 1.6));
+      var e = 1 - Math.pow(1 - prog, 3);
+      for (var s = 0; s < picks.length; s++) {
+        var src = pts[picks[s].idx];
+        var x = src.x + (picks[s].tx - src.x) * e;
+        var y = src.y + (picks[s].ty - src.y) * e;
+        ctx.beginPath(); ctx.arc(x, y, 3.8, 0, Math.PI * 2);
+        ctx.fillStyle = '#00e5d1'; ctx.fill();
+        if (e > .96) {
+          ctx.strokeStyle = 'rgba(0,229,209,.4)'; ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.moveTo(x + 14, y); ctx.lineTo(x + 96, y); ctx.stroke();
+        }
+      }
+      if (!reduce || t < .1) requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  }
+
+  go(0);
+})();
+</script>
+
+</body>
+</html>

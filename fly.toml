@@ -1,40 +1,37 @@
-# Fly.io 배포 설정 — seoul-opendata-mcp (Streamable HTTP)
+# fly.toml app configuration file generated for seoul-opendata-mcp on 2026-08-31T13:10:18+09:00
 #
-#   fly launch --no-deploy --copy-config   # 앱 생성 (app 이름은 아래와 맞출 것)
-#   fly secrets set SEOUL_OPEN_DATA_API_KEY=... MCP_AUTH_TOKEN=...
-#   fly deploy
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
-# 배포 후 MCP 엔드포인트: https://<app>.fly.dev/mcp
 
-app = "seoul-opendata-mcp"
-primary_region = "nrt"   # 도쿄 — 서울 열린데이터광장 API와 가장 가깝다
+app = 'seoul-opendata-mcp'
+primary_region = 'nrt'
 
 [build]
-  dockerfile = "Dockerfile"
+  dockerfile = 'Dockerfile'
 
 [env]
-  PORT = "8080"
-  NODE_ENV = "production"
+  NODE_ENV = 'production'
+  PORT = '8080'
 
 [http_service]
   internal_port = 8080
   force_https = true
-  auto_stop_machines = "suspend"
+  auto_stop_machines = 'suspend'
   auto_start_machines = true
   min_machines_running = 0
 
   [http_service.concurrency]
-    type = "requests"
-    soft_limit = 40
+    type = 'requests'
     hard_limit = 60
+    soft_limit = 40
 
   [[http_service.checks]]
-    grace_period = "10s"
-    interval = "30s"
-    method = "GET"
-    timeout = "5s"
-    path = "/healthz"
+    interval = '30s'
+    timeout = '5s'
+    grace_period = '10s'
+    method = 'GET'
+    path = '/healthz'
 
 [[vm]]
-  size = "shared-cpu-1x"
-  memory = "512mb"
+  size = 'shared-cpu-1x'
+  memory = '512mb'
