@@ -16,7 +16,7 @@ import { MemoryCache, normalizeCacheKey, isRealtimeQuery, TTL } from "../cache/m
 import { matchesDivision } from "../utils/divisionMatch.js";
 import { logger } from "../utils/logger.js";
 
-const resultCache = new MemoryCache<RecommendOutput>(5 * 60 * 1000);
+const resultCache = new MemoryCache<RecommendOutput>(TTL.DEFAULT);
 
 /** 아이디어 요약 — 첫 30자 + 말줄임표 */
 function summarize(text: string): string {

@@ -10,18 +10,16 @@
 
 ---
 
-## 🚀 지금 바로 써보기 (설치·인증키 발급 불필요)
+## 🚀 지금 바로 써보기 (설치·인증키·토큰 불필요)
 
-이미 원격 서버가 떠 있어서, **내 컴퓨터에 아무것도 설치하지 않고 URL만 연결하면 바로 씁니다.** 서울시 인증키도 각자 발급받을 필요 없이 공용 서버 하나를 같이 씁니다.
-
-> 연결에 필요한 **토큰**은 관리자(레포 소유자)에게 문의해서 받으세요. 아래 예시의 `<TOKEN>` 자리에 넣으면 됩니다.
+이미 원격 서버가 떠 있어서, **내 컴퓨터에 아무것도 설치하지 않고 URL만 연결하면 바로 씁니다.** 서울시 인증키를 발급받을 필요도, 누구에게 토큰을 받을 필요도 없습니다.
 
 <table>
 <tr><td><b>Claude.ai (웹)</b></td><td>
 
 설정 → Connectors → **Add custom connector**
 - URL: `https://seoul-opendata-mcp.fly.dev/mcp`
-- 헤더: `Authorization: Bearer <TOKEN>`
+- 인증 설정 없음 (헤더 불필요)
 
 </td></tr>
 <tr><td><b>Claude Desktop / Cursor</b></td><td>
@@ -31,8 +29,7 @@
 {
   "mcpServers": {
     "seoul-opendata": {
-      "url": "https://seoul-opendata-mcp.fly.dev/mcp",
-      "headers": { "Authorization": "Bearer <TOKEN>" }
+      "url": "https://seoul-opendata-mcp.fly.dev/mcp"
     }
   }
 }
@@ -43,8 +40,7 @@
 
 ```bash
 claude mcp add --transport http seoul-opendata \
-  https://seoul-opendata-mcp.fly.dev/mcp \
-  --header "Authorization: Bearer <TOKEN>"
+  https://seoul-opendata-mcp.fly.dev/mcp
 ```
 
 등록 후 새 세션을 열면 바로 연결됩니다 (`claude mcp list`로 확인).
@@ -53,6 +49,22 @@ claude mcp add --transport http seoul-opendata \
 </table>
 
 등록이 끝나면 별도 명령어 없이 **대화창에 그냥 물어보면** 됩니다.
+
+### 공용 서버 이용 한도
+
+서울 열린데이터광장의 일반 오픈API는 **호출 횟수 제한이 없습니다**(1,000건은 1회 호출당 최대 응답 건수이고, 1일 1,000회 제한은 실시간 지하철 오픈API에만 적용됩니다). 이 서버가 쓰는 카탈로그 검색 API는 해당되지 않으므로, 인증키 때문에 막히는 일은 없습니다.
+
+다만 작은 머신 하나로 운영되므로 서버 보호를 위한 제한은 걸어두었습니다.
+
+| 제한 | 값 |
+|---|---|
+| IP당 분당 요청 | 60회 (순간 버스트 120회) |
+| IP당 하루 요청 | 2,000회 |
+| 상위 API 전역 일일 호출 | 50,000회 (폭주 방지 차단기, 한국시간 자정 리셋) |
+
+대화하면서 쓰는 정도로는 걸릴 일이 없습니다. 검색 결과는 1시간, 데이터셋 상세는 24시간 캐시되므로 같은 질문은 아예 상위 API를 부르지 않습니다. 현재 상태는 <https://seoul-opendata-mcp.fly.dev/healthz> 에서 확인할 수 있고, 제한에 걸리면 `429` 응답과 함께 재시도 시각을 알려줍니다.
+
+제한 없이 쓰고 싶다면 [내 서버로 직접 배포](#️-내-서버로-직접-배포하고-싶다면)하거나 [내 컴퓨터에 직접 설치](#️-내-컴퓨터에-직접-설치하고-싶다면)해서 본인 인증키로 띄우면 됩니다.
 
 ## 💬 이렇게 물어보세요
 
@@ -74,8 +86,8 @@ claude mcp add --transport http seoul-opendata \
 **이미 죽은 API 붙잡고 삽질하지 않기**
 서울시 공공데이터는 매년 수백 건씩 서비스가 종료됩니다(2025년만 173건). "최근에 갱신된 교통 API만 보여줘"라고 물으면, 목록엔 남아 있지만 실제로는 운영이 끊긴 데이터를 걸러내고 지금도 살아있는 것만 추천합니다.
 
-**여러 사람이 인증키 하나로**
-서울시 인증키는 하루 호출 한도가 있어 여러 명이 나눠 쓰기 번거롭습니다. 팀원이나 스터디원이 각자 발급받을 필요 없이, 이미 떠 있는 원격 서버 하나에 다같이 연결해서 씁니다.
+**인증키 발급 없이, URL만으로**
+서울시 인증키는 발급받고 한도를 관리해야 해서 진입장벽이 됩니다. 공용 원격 서버가 그 몫을 대신 지므로, 쓰는 사람은 URL 하나만 등록하면 끝입니다.
 
 ---
 
@@ -306,7 +318,7 @@ seoul-opendata-mcp
 openapi.seoul.go.kr:8088/{키}/json/SearchCatalogService/{시작}/{종료}/{ID}/{서비스명}/{기관명}/
 ```
 
-**성능**: 추천 질의 1회(키워드 5개 병렬 검색) 기준 약 90ms대, 동일 조건 재질의는 캐시 히트로 외부 API 재호출 없이 즉시 응답. 단위 테스트 47개 전체 통과.
+**성능**: 추천 질의 1회(키워드 5개 병렬 검색) 기준 약 90ms대, 동일 조건 재질의는 캐시 히트로 외부 API 재호출 없이 즉시 응답. 단위 테스트 59개 전체 통과.
 
 캐시 정책: 실시간성 키워드 질의 1분 · 일반 검색/추천 5분 · 상세 조회 30분 (in-memory TTL). 네트워크 오류·5xx 응답은 지수 백오프로 최대 3회 재시도합니다.
 
@@ -359,7 +371,7 @@ GET  /healthz   헬스체크
 
 ```bash
 fly launch --no-deploy --copy-config
-fly secrets set SEOUL_OPEN_DATA_API_KEY=발급받은키 MCP_AUTH_TOKEN=$(openssl rand -hex 32)
+fly secrets set SEOUL_OPEN_DATA_API_KEY=발급받은키
 fly deploy
 curl -s https://<app>.fly.dev/healthz
 ```
@@ -367,12 +379,21 @@ curl -s https://<app>.fly.dev/healthz
 **클라이언트 등록**
 
 ```bash
-claude mcp add --transport http seoul-opendata https://<app>.fly.dev/mcp \
-  --header "Authorization: Bearer <MCP_AUTH_TOKEN>"
+claude mcp add --transport http seoul-opendata https://<app>.fly.dev/mcp
 ```
 
 - 무상태 모드라 머신을 늘려도 세션이 꼬이지 않고, 트래픽이 없으면 머신이 자동으로 잠들어 비용이 거의 들지 않습니다.
-- **공개 배포 시 `MCP_AUTH_TOKEN`을 반드시 설정하세요.** 비워두면 누구나 호출해 인증키의 일일 한도를 소진시킬 수 있습니다.
+- **토큰 없이 공개해도 됩니다.** 서울시 일반 오픈API에는 호출 횟수 제한이 없으므로 인증키가 소진될 일은 없고, 아래 제한은 서버(머신) 보호와 폭주 방지용입니다.
+
+| 환경변수 | 기본값 | 설명 |
+|---|---|---|
+| `MCP_RATE_LIMIT_PER_MIN` | 60 | IP당 분당 요청 수 (버스트는 2배) |
+| `MCP_RATE_LIMIT_PER_DAY` | 2000 | IP당 하루 요청 수 |
+| `SEOUL_API_DAILY_BUDGET` | 50000 | 상위 API 전역 일일 호출 상한. 무한 루프에 빠진 클라이언트 차단용. `0`이면 해제 |
+| `MCP_AUTH_TOKEN` | (비움) | 특정 인원에게만 열고 싶을 때만 설정. 설정하면 인증된 요청은 IP 제한을 면제받습니다 |
+
+- 추천 도구 1회 호출이 상위 API를 5~8번 부릅니다. 캐시 TTL(검색 1시간 / 상세 24시간)이 반복 질문을 대부분 흡수합니다.
+- **실시간 지하철 오픈API만 예외적으로 1일 1,000회(인증키당) 제한**이 있습니다. 이 서버는 카탈로그 검색만 사용하므로 무관하지만, 추천받은 지하철 API를 직접 호출한다면 활용사례(갤러리)에 서비스를 등록하고 승인받으면 제한 없이 쓸 수 있습니다.
 
 자세한 환경변수·플랫폼별 절차·운영 주의점은 **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** 참고.
 
@@ -381,7 +402,7 @@ claude mcp add --transport http seoul-opendata https://<app>.fly.dev/mcp \
 ## 🧪 테스트 · 빌드
 
 ```bash
-pnpm test       # vitest — 47개 테스트
+pnpm test       # vitest — 59개 테스트
 pnpm build      # TypeScript 컴파일
 pnpm dev        # stdio 서버 (로컬 개발)
 pnpm dev:http   # HTTP 서버 (기본 http://localhost:8080/mcp)

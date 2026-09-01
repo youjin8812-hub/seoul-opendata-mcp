@@ -13,7 +13,8 @@ import { normalizeDatasets } from "../parsers/normalizeDataset.js";
 import { matchesDivision } from "../utils/divisionMatch.js";
 import { MemoryCache, normalizeCacheKey } from "../cache/memoryCache.js";
 
-const recentUpdatesCache = new MemoryCache<RecentUpdatesOutput>(3 * 60 * 1000);
+// 최신 업데이트 목록은 하루 단위로 바뀌므로 30분이면 충분하다.
+const recentUpdatesCache = new MemoryCache<RecentUpdatesOutput>(30 * 60 * 1000);
 
 /** SearchCatalogService 1회 호출 최대 허용치 — 정렬 대상 표본을 최대한 넓게 확보 */
 const FETCH_SIZE = 1000;

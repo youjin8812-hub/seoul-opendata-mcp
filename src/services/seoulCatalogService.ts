@@ -13,6 +13,7 @@
 import type { RawSeoulCatalogItem } from "../types/index.js";
 import { logger } from "../utils/logger.js";
 import { fetchWithRetry } from "../utils/retry.js";
+import { seoulApiQuota, QuotaExhaustedError } from "../utils/dailyQuota.js";
 
 const BASE_URL = "http://openapi.seoul.go.kr:8088";
 const SERVICE_NAME = "SearchCatalogService";
@@ -100,6 +101,13 @@ export async function searchSeoulCatalog(
     encodeSegment(orgName),
     "",
   ].join("/");
+
+  // 공개 서버는 인증키 하나를 공유하므로, 상위 API를 부르기 전에 일일 예산을 차감한다.
+  if (!seoulApiQuota.consume()) {
+    const { resetsInSec } = seoulApiQuota.status();
+    logger.error("일일 예산 소진 — 상위 API 호출 차단", { resetsInSec });
+    throw new QuotaExhaustedError(resetsInSec);
+  }
 
   logger.info("searchSeoulCatalog 호출", { start, end, infId, keyword, orgName });
 
