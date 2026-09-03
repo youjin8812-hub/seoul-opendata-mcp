@@ -28,6 +28,13 @@ import type {
   SearchInput,
   RecentUpdatesInput,
 } from "./types/index.js";
+import {
+  formatRecommendations,
+  formatSearchResults,
+  formatRecentUpdates,
+  formatDatasetDetail,
+  formatRefinedRecommendations,
+} from "./formatters/textOutput.js";
 import { logger } from "./utils/logger.js";
 
 // ─── Zod 스키마 ────────────────────────────────────────────────────────────────
@@ -243,6 +250,28 @@ export const TOOL_DEFINITIONS = [
   },
 ];
 
+// ─── 응답 조립 ────────────────────────────────────────────────────────────────
+
+/**
+ * 읽기용 마크다운을 먼저, 구조화된 JSON을 뒤에 담는다.
+ *
+ * 마크다운만 주면 refine_seoul_recommendations가 이전 결과를 그대로 돌려받을 수
+ * 없고, JSON만 주면 클라이언트마다 요약이 달라져 제공형식·갱신주기·담당부서 같은
+ * 항목이 누락된다. 두 블록을 함께 보내 양쪽을 만족시킨다.
+ * JSON은 들여쓰기 없이 직렬화해 토큰을 아낀다.
+ */
+function toolResult(markdown: string, data: unknown) {
+  return {
+    content: [
+      { type: "text", text: markdown },
+      {
+        type: "text",
+        text: `<!-- 구조화된 결과 (refine_seoul_recommendations 입력용) -->\n${JSON.stringify(data)}`,
+      },
+    ],
+  };
+}
+
 // ─── 도구 호출 핸들러 ─────────────────────────────────────────────────────────
 
 export async function callTool(name: string, args: unknown) {
@@ -250,41 +279,31 @@ export async function callTool(name: string, args: unknown) {
     if (name === "recommend_seoul_apis_for_idea") {
       const input = RecommendInputSchema.parse(args) as RecommendInput;
       const result = await recommendSeoulApisForIdea(input);
-      return {
-        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-      };
+      return toolResult(formatRecommendations(result), result);
     }
 
     if (name === "search_seoul_datasets") {
       const input = SearchInputSchema.parse(args) as SearchInput;
       const result = await searchSeoulDatasetsForTool(input);
-      return {
-        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-      };
+      return toolResult(formatSearchResults(result), result);
     }
 
     if (name === "get_seoul_dataset_detail") {
       const { detailUrl } = DatasetDetailInputSchema.parse(args);
       const result = await getSeoulDatasetDetail(detailUrl);
-      return {
-        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-      };
+      return toolResult(formatDatasetDetail(result), result);
     }
 
     if (name === "refine_seoul_recommendations") {
       const input = RefineInputSchema.parse(args) as RefineInput;
       const result = refineRecommendations(input);
-      return {
-        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-      };
+      return toolResult(formatRefinedRecommendations(result.recommendations), result);
     }
 
     if (name === "list_seoul_recent_updates") {
       const input = RecentUpdatesInputSchema.parse(args ?? {}) as RecentUpdatesInput;
       const result = await listSeoulRecentUpdates(input);
-      return {
-        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-      };
+      return toolResult(formatRecentUpdates(result), result);
     }
 
     return {
