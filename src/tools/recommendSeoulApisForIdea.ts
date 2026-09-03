@@ -7,6 +7,7 @@ import type {
   RecommendInput,
   RecommendOutput,
   NormalizedDataset,
+  KeywordSources,
 } from "../types/index.js";
 import { extractKeywords } from "../parsers/extractKeywords.js";
 import { searchSeoulCatalog, getServiceKey } from "../services/seoulCatalogService.js";
@@ -14,6 +15,10 @@ import { normalizeDatasets, deduplicateDatasets } from "../parsers/normalizeData
 import { scoreAndRank } from "../ranking/scoreDataset.js";
 import { MemoryCache, normalizeCacheKey, isRealtimeQuery, TTL } from "../cache/memoryCache.js";
 import { matchesDivision } from "../utils/divisionMatch.js";
+import {
+  getCatalogVocabulary,
+  expandWithCatalogVocabulary,
+} from "../vocab/catalogVocabulary.js";
 import { logger } from "../utils/logger.js";
 
 const resultCache = new MemoryCache<RecommendOutput>(5 * 60 * 1000);
@@ -27,6 +32,46 @@ const MAX_SEARCH_QUERIES = 8;
 
 /** 키워드 1개당 가져올 카탈로그 건수 */
 const PER_QUERY_SIZE = 20;
+
+/** 확장 유사어를 포함한 키워드 총 상한 */
+const MAX_TOTAL_KEYWORDS = 20;
+
+/** 카탈로그 어휘 색인에서 가져올 유사어 수 */
+const MAX_CATALOG_SYNONYMS = 8;
+
+/** 호출자가 넘긴 동의어 정리 — 공백·중복·과다 입력을 막는다 */
+function sanitizeSynonyms(input: string[] | undefined): string[] {
+  if (!input?.length) return [];
+  const out: string[] = [];
+  for (const raw of input) {
+    const s = raw?.trim();
+    if (!s || s.length < 2 || s.length > 20) continue;
+    if (!out.includes(s)) out.push(s);
+    if (out.length >= 10) break;
+  }
+  return out;
+}
+
+/**
+ * 카탈로그 실제 등재 어휘로 키워드를 확장한다.
+ * 색인 구축(전수 조회)이 실패해도 추천은 사전 기반으로 계속되어야 하므로,
+ * 오류를 삼키고 빈 배열을 반환한다.
+ */
+async function expandFromCatalog(
+  coreKeywords: string[],
+  serviceKey: string
+): Promise<string[]> {
+  if (coreKeywords.length === 0) return [];
+  try {
+    const vocab = await getCatalogVocabulary(serviceKey);
+    return expandWithCatalogVocabulary(vocab, coreKeywords, MAX_CATALOG_SYNONYMS);
+  } catch (err) {
+    logger.warn("카탈로그 어휘 확장 실패 — 내장 사전으로 진행", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return [];
+  }
+}
 
 /** 아이디어 요약 — 첫 30자 + 말줄임표 */
 function summarize(text: string): string {
@@ -75,10 +120,13 @@ export async function recommendSeoulApisForIdea(
     limit = 5,
     orgName,
     division,
+    synonyms,
   } = input;
 
+  const clientSynonyms = sanitizeSynonyms(synonyms);
+
   const cacheKey = normalizeCacheKey(
-    `${ideaText}|${apiOnly}|${realtimePreferred}|${domainHint ?? ""}|${limit}|${orgName ?? ""}|${division ?? ""}`
+    `${ideaText}|${apiOnly}|${realtimePreferred}|${domainHint ?? ""}|${limit}|${orgName ?? ""}|${division ?? ""}|${clientSynonyms.join(",")}`
   );
 
   const cached = resultCache.get(cacheKey);
@@ -87,11 +135,40 @@ export async function recommendSeoulApisForIdea(
     return cached;
   }
 
-  // 1. 키워드 추출
-  const { keywords, coreKeywords, isRealtimeHinted } = extractKeywords(ideaText, domainHint);
+  // 1. 키워드 추출 — 규칙 기반 사전 확장
+  const {
+    coreKeywords,
+    expandedKeywords: dictionaryKeywords,
+    isRealtimeHinted,
+  } = extractKeywords(ideaText, domainHint);
   const effectiveRealtime = realtimePreferred || isRealtimeHinted;
 
-  logger.info("추출된 키워드", { keywords, coreKeywords, effectiveRealtime });
+  const serviceKey = getServiceKey();
+
+  // 2. 유사어 보강 — 카탈로그 실제 등재 어휘로 확장
+  const catalogKeywords = (await expandFromCatalog(coreKeywords, serviceKey)).filter(
+    (k) => !coreKeywords.includes(k) && !clientSynonyms.includes(k)
+  );
+
+  // 출처별 우선순위: 원문 > 카탈로그 등재명 > 호출자 동의어 > 내장 사전.
+  // 카탈로그 등재명을 앞에 두는 이유는 정의상 검색이 반드시 걸리기 때문이다.
+  const keywordSources: KeywordSources = {
+    core: coreKeywords,
+    client: clientSynonyms,
+    catalog: catalogKeywords,
+    dictionary: dictionaryKeywords.filter(
+      (k) => !catalogKeywords.includes(k) && !clientSynonyms.includes(k)
+    ),
+  };
+
+  const keywords = [
+    ...keywordSources.core,
+    ...keywordSources.catalog,
+    ...keywordSources.client,
+    ...keywordSources.dictionary,
+  ].slice(0, MAX_TOTAL_KEYWORDS);
+
+  logger.info("추출된 키워드", { keywords, keywordSources, effectiveRealtime });
 
   const searchQueries = keywords.slice(0, MAX_SEARCH_QUERIES);
   if (searchQueries.length === 0) {
@@ -102,8 +179,7 @@ export async function recommendSeoulApisForIdea(
   const explicitOrg = orgName?.trim() || undefined;
   logger.info("제공기관 필터", { explicitOrg, detectedOrgs });
 
-  // 2. 카탈로그 API 병렬 호출
-  const serviceKey = getServiceKey();
+  // 3. 카탈로그 API 병렬 호출
 
   const searches = [
     // 키워드별 서비스명 검색 — orgName이 명시되면 모든 키워드 검색에 함께 적용
@@ -154,12 +230,12 @@ export async function recommendSeoulApisForIdea(
     );
   }
 
-  // 3. 정규화 + 중복 제거(서비스 ID 우선) + 제공 주체 구분 필터
+  // 4. 정규화 + 중복 제거(서비스 ID 우선) + 제공 주체 구분 필터
   const normalized: NormalizedDataset[] = deduplicateDatasets(
     normalizeDatasets(rawItems)
   ).filter((d) => matchesDivision(d.division, division));
 
-  // 4. 점수화 + 정렬 + 상위 N개
+  // 5. 점수화 + 정렬 + 상위 N개
   const ranked = scoreAndRank(normalized, {
     keywords,
     coreKeywords,
@@ -171,6 +247,7 @@ export async function recommendSeoulApisForIdea(
   const output: RecommendOutput = {
     ideaSummary: summarize(ideaText),
     extractedKeywords: keywords,
+    keywordSources,
     recommendations: ranked,
     ...(errors.length > 0 && {
       warning: `일부 키워드 검색 실패: ${errors.join("; ")}`,

@@ -153,11 +153,31 @@ export interface RecommendInput {
   orgName?: string;
   /** 제공 주체 구분 필터 — "본청"/"산하기관"/"자치구" 중 포함 매칭 (예: "자치구") */
   division?: string;
+  /**
+   * 호출하는 AI 어시스턴트가 제공하는 동의어·유의어 목록.
+   * 서버 내장 사전이 모르는 신조어·정책용어를 보완한다
+   * (예: "그늘맵" → ["그늘막", "무더위쉼터", "폭염저감시설", "쿨링포그"]).
+   */
+  synonyms?: string[];
+}
+
+/** 검색 키워드가 어디서 왔는지 — 유사어 확장 품질을 점검할 때 쓴다 */
+export interface KeywordSources {
+  /** 사용자 입력에서 직접 추출 */
+  core: string[];
+  /** 호출한 AI 어시스턴트가 넘긴 동의어 */
+  client: string[];
+  /** 카탈로그 실제 등재명에서 자동 확장 */
+  catalog: string[];
+  /** 서버 내장 사전에서 확장 */
+  dictionary: string[];
 }
 
 export interface RecommendOutput {
   ideaSummary: string;
   extractedKeywords: string[];
+  /** 키워드 출처별 내역 */
+  keywordSources?: KeywordSources;
   recommendations: Recommendation[];
   /** 일부 키워드 검색 실패 시 경고 메시지 */
   warning?: string;
