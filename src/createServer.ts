@@ -28,6 +28,13 @@ import type {
   SearchInput,
   RecentUpdatesInput,
 } from "./types/index.js";
+import {
+  formatRecommendations,
+  formatSearchResults,
+  formatRecentUpdates,
+  formatDatasetDetail,
+  formatRefinedRecommendations,
+} from "./formatters/textOutput.js";
 import { logger } from "./utils/logger.js";
 
 // ─── Zod 스키마 ────────────────────────────────────────────────────────────────
@@ -40,6 +47,7 @@ const RecommendInputSchema = z.object({
   limit: z.number().int().min(1).max(10).optional(),
   orgName: z.string().optional(),
   division: z.string().optional(),
+  synonyms: z.array(z.string()).max(20).optional(),
 });
 
 const SearchInputSchema = z.object({
@@ -85,7 +93,9 @@ export const TOOL_DEFINITIONS = [
   {
     name: "recommend_seoul_apis_for_idea",
     description:
-      "자연어로 아이디어를 설명하면 서울 열린데이터광장(data.seoul.go.kr) 카탈로그에서 적합한 API 후보를 추천합니다. 키워드 검색·점수화를 자동으로 수행하고 상위 결과를 반환합니다.",
+      "자연어로 아이디어를 설명하면 서울 열린데이터광장(data.seoul.go.kr) 카탈로그에서 적합한 API 후보를 추천합니다. 키워드 검색·점수화를 자동으로 수행하고 상위 결과를 반환합니다. " +
+      "추천 품질은 검색 키워드가 카탈로그의 실제 등재명과 얼마나 겹치는지에 좌우되므로, 호출할 때 synonyms에 동의어·유의어를 함께 넘겨주세요. " +
+      "특히 '그늘맵'처럼 서버 사전에 없을 법한 신조어·합성어·정책용어가 포함된 아이디어에서 중요합니다.",
     inputSchema: {
       type: "object",
       properties: {
@@ -117,6 +127,14 @@ export const TOOL_DEFINITIONS = [
           type: "string",
           description:
             "제공 주체 구분 필터 — '본청'/'산하기관'/'자치구' 중 일부 입력 (예: '자치구'만 보거나 자치구 데이터를 빼려면 '본청')",
+        },
+        synonyms: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "아이디어의 핵심 개념에 대한 동의어·유의어(최대 10개 반영). 서울시 행정문서·공공데이터에서 쓰일 법한 표현으로 적어주세요. " +
+            "예: '그늘맵' → ['그늘막', '무더위쉼터', '폭염저감시설', '쿨링포그', '폭염취약지역']. " +
+            "일상어보다 카탈로그 등재명에 가까운 용어일수록 좋습니다.",
         },
       },
       required: ["ideaText"],
@@ -232,6 +250,28 @@ export const TOOL_DEFINITIONS = [
   },
 ];
 
+// ─── 응답 조립 ────────────────────────────────────────────────────────────────
+
+/**
+ * 읽기용 마크다운을 먼저, 구조화된 JSON을 뒤에 담는다.
+ *
+ * 마크다운만 주면 refine_seoul_recommendations가 이전 결과를 그대로 돌려받을 수
+ * 없고, JSON만 주면 클라이언트마다 요약이 달라져 제공형식·갱신주기·담당부서 같은
+ * 항목이 누락된다. 두 블록을 함께 보내 양쪽을 만족시킨다.
+ * JSON은 들여쓰기 없이 직렬화해 토큰을 아낀다.
+ */
+function toolResult(markdown: string, data: unknown) {
+  return {
+    content: [
+      { type: "text", text: markdown },
+      {
+        type: "text",
+        text: `<!-- 구조화된 결과 (refine_seoul_recommendations 입력용) -->\n${JSON.stringify(data)}`,
+      },
+    ],
+  };
+}
+
 // ─── 도구 호출 핸들러 ─────────────────────────────────────────────────────────
 
 export async function callTool(name: string, args: unknown) {
@@ -239,41 +279,31 @@ export async function callTool(name: string, args: unknown) {
     if (name === "recommend_seoul_apis_for_idea") {
       const input = RecommendInputSchema.parse(args) as RecommendInput;
       const result = await recommendSeoulApisForIdea(input);
-      return {
-        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-      };
+      return toolResult(formatRecommendations(result), result);
     }
 
     if (name === "search_seoul_datasets") {
       const input = SearchInputSchema.parse(args) as SearchInput;
       const result = await searchSeoulDatasetsForTool(input);
-      return {
-        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-      };
+      return toolResult(formatSearchResults(result), result);
     }
 
     if (name === "get_seoul_dataset_detail") {
       const { detailUrl } = DatasetDetailInputSchema.parse(args);
       const result = await getSeoulDatasetDetail(detailUrl);
-      return {
-        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-      };
+      return toolResult(formatDatasetDetail(result), result);
     }
 
     if (name === "refine_seoul_recommendations") {
       const input = RefineInputSchema.parse(args) as RefineInput;
       const result = refineRecommendations(input);
-      return {
-        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-      };
+      return toolResult(formatRefinedRecommendations(result.recommendations), result);
     }
 
     if (name === "list_seoul_recent_updates") {
       const input = RecentUpdatesInputSchema.parse(args ?? {}) as RecentUpdatesInput;
       const result = await listSeoulRecentUpdates(input);
-      return {
-        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-      };
+      return toolResult(formatRecentUpdates(result), result);
     }
 
     return {

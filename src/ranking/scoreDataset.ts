@@ -3,6 +3,7 @@
  *
  * 점수 구성 (총 95점 기준):
  *   도메인 적합도   40점  - 제목/태그(정책분야)에 검색 키워드 포함 여부
+ *                          (원문 키워드 > 확장 유사어 가중, 키워드 수에 희석되지 않음)
  *   데이터 형태     20점  - API(20) > FILE(8) > UNKNOWN(3) — SRV_TYPE 기준
  *   업데이트 주기   10점  - 실시간/일별 데이터 우대
  *   최신성          10점  - 최근 수정일 우대 (최근 1년 만점)
@@ -10,6 +11,7 @@
  *   설명 품질        5점  - 설명 길이/풍부도 (서울시 카탈로그는 설명 필드가 없어 대부분 0점)
  *
  * apiOnly=true 시 API 외 타입은 결과에서 제거된다.
+ * 키워드가 주어진 질의에서 도메인 적합도가 0점인 데이터셋은 후보에서 제외된다.
  */
 
 import type { NormalizedDataset, Recommendation, ScoreBreakdown, ScoreContext } from "../types/index.js";
@@ -45,32 +47,59 @@ function recencyScore(lastUpdated: string): number {
 
 // ─── 도메인 적합도 점수 (0~40) ────────────────────────────────────────────────
 
-function domainScore(dataset: NormalizedDataset, keywords: string[]): number {
-  if (keywords.length === 0) return 20;
+/**
+ * 매칭 위치별 배점. 유사어 확장으로 키워드 수가 늘어나도 점수가 희석되지 않도록,
+ * "매칭 비율(matches / keywords.length)"이 아니라 "매칭 건별 가산 후 상한"으로 계산한다.
+ *
+ * 기존 비율 방식에서는 유사어를 늘릴수록 분모가 커져서 정작 관련 있는 데이터의
+ * 점수가 떨어지는 역효과가 있었다 (유사어 2개 49점 → 7개 28점).
+ */
+const MATCH_POINTS = {
+  /**
+   * 사용자가 실제로 입력한 키워드.
+   *
+   * 제목 매칭에 20점을 주는 이유: 사용자가 명시한 단어가 데이터명에 그대로
+   * 있으면 그 자체로 강한 신호다. 이 값이 낮으면(이전 12점) 도메인 40점을
+   * 채우기 어려워, 관련도와 무관하게 붙는 형태(20)+갱신주기(10)+최신성(10)이
+   * 순위를 뒤집는다. "그늘막"으로 검색했는데 그늘막 데이터가 3등으로
+   * 밀리던 것이 그 경우였다.
+   */
+  core: { title: 20, tag: 5, body: 3 },
+  /** 사전·카탈로그에서 파생된 확장 유사어 — 원문 키워드보다 낮게 본다 */
+  expanded: { title: 7, tag: 3, body: 2 },
+} as const;
+
+/** 키워드가 없을 때(필터 전용 질의)의 중립 점수 */
+const NEUTRAL_DOMAIN_SCORE = 20;
+
+function domainScore(
+  dataset: NormalizedDataset,
+  keywords: string[],
+  coreKeywords?: string[]
+): number {
+  if (keywords.length === 0) return NEUTRAL_DOMAIN_SCORE;
 
   const titleText = dataset.title.toLowerCase();
   const bodyText = `${dataset.description} ${dataset.provider}`.toLowerCase();
   const tagText = dataset.tags.join(" ").toLowerCase();
 
-  let matches = 0;
-  let titleBonus = 0;
-  let tagBonus = 0;
+  // coreKeywords가 전달되지 않으면(레거시 호출) 모든 키워드를 원문 키워드로 본다
+  const coreSet = new Set(
+    (coreKeywords ?? keywords).map((k) => k.toLowerCase())
+  );
 
+  let score = 0;
   for (const kw of keywords) {
     const k = kw.toLowerCase();
-    if (titleText.includes(k)) {
-      matches++;
-      titleBonus += 2; // 제목 매칭은 추가 가중치
-    } else if (bodyText.includes(k)) {
-      matches++;
-    }
-    if (tagText.includes(k)) {
-      tagBonus += 1; // 포털 태그 매칭 보너스
-    }
+    const points = coreSet.has(k) ? MATCH_POINTS.core : MATCH_POINTS.expanded;
+
+    // 한 키워드는 가장 강한 매칭 위치 하나만 인정한다 (제목 > 태그 > 본문)
+    if (titleText.includes(k)) score += points.title;
+    else if (tagText.includes(k)) score += points.tag;
+    else if (bodyText.includes(k)) score += points.body;
   }
 
-  const base = Math.round((matches / keywords.length) * 30);
-  return Math.min(40, base + Math.min(6, titleBonus) + Math.min(4, tagBonus));
+  return Math.min(40, score);
 }
 
 // ─── 지역성 점수 (0~10) ───────────────────────────────────────────────────────
@@ -133,13 +162,17 @@ function relevanceBreakdown(
   dataset: NormalizedDataset,
   keywords: string[],
   realtimePreferred: boolean,
-  hasOrgFilter: boolean
+  hasOrgFilter: boolean,
+  coreKeywords?: string[]
 ): { score: number; reasons: string[] } {
   const reasons: string[] = [];
   let score = 0;
 
   // 데이터명·키워드·동의어 일치 — 기존 도메인 점수(0~40)를 그대로 재사용
-  const keywordScore = Math.min(RELEVANCE_WEIGHTS.keywordMatch, domainScore(dataset, keywords));
+  const keywordScore = Math.min(
+    RELEVANCE_WEIGHTS.keywordMatch,
+    domainScore(dataset, keywords, coreKeywords)
+  );
   if (keywordScore > 0) {
     score += keywordScore;
     reasons.push(`데이터명/태그가 검색 키워드와 일치 (+${keywordScore})`);
@@ -245,7 +278,8 @@ export function computeScoreBreakdown(
     dataset,
     ctx.keywords,
     ctx.realtimePreferred,
-    Boolean(ctx.orgFilterApplied)
+    Boolean(ctx.orgFilterApplied),
+    ctx.coreKeywords
   );
   const quality = qualityBreakdown(dataset);
 
@@ -264,7 +298,7 @@ export function scoreAndRank(
   datasets: NormalizedDataset[],
   ctx: ScoreContext
 ): Recommendation[] {
-  const { keywords, apiOnly, realtimePreferred } = ctx;
+  const { keywords, coreKeywords, apiOnly, realtimePreferred } = ctx;
 
   // 최소 점수 임계값: 키워드와 전혀 관련 없는 결과를 제거 (95점 만점 기준)
   const MIN_SCORE = 15;
@@ -272,12 +306,16 @@ export function scoreAndRank(
   return datasets
     .filter((d) => {
       if (apiOnly && d.type !== "API") return false;
+      // 관련도 게이트: 키워드가 있는 질의인데 어떤 키워드에도 걸리지 않는 데이터는
+      // 후보에서 제외한다. 이 가드가 없으면 도메인 0점짜리도 형태(20)+주기(10)+
+      // 최신성(10)+지역(5) = 45점을 그대로 받아 MIN_SCORE를 항상 통과했다.
+      if (keywords.length > 0 && domainScore(d, keywords, coreKeywords) === 0) return false;
       return true;
     })
     .map((d) => {
       let score = 0;
 
-      score += domainScore(d, keywords);          // 최대 40
+      score += domainScore(d, keywords, coreKeywords);          // 최대 40
       // API(20) > FILE(8) > UNKNOWN(3) — SRV_TYPE 기준 타입별 우대
       score += d.type === "API" ? 20 : d.type === "FILE" ? 8 : 3;
       score += cycleScore(d.updateCycle);          // 최대 10

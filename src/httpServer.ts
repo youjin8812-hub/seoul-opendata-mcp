@@ -17,6 +17,9 @@
  *   MCP_AUTH_TOKEN           설정 시 Authorization: Bearer <토큰> 필수
  *   MCP_ALLOWED_HOSTS        쉼표 구분 Host 허용 목록 (DNS 리바인딩 방지)
  *   MCP_ALLOWED_ORIGINS      쉼표 구분 Origin 허용 목록
+ *   MCP_RATE_LIMIT_PER_MINUTE  IP당 분당 요청 수 (기본 20, 0이면 해제)
+ *   MCP_RATE_LIMIT_PER_HOUR    IP당 시간당 요청 수 (기본 200, 0이면 해제)
+ *   MCP_TRUST_PROXY            "true"면 X-Forwarded-For를 클라이언트 IP로 신뢰
  */
 
 import "dotenv/config";
@@ -24,6 +27,7 @@ import http from "node:http";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 
 import { createSeoulMcpServer } from "./createServer.js";
+import { RateLimiter, resolveClientIp, type RateLimitRule } from "./utils/rateLimiter.js";
 import { logger } from "./utils/logger.js";
 
 const PORT = Number(process.env["PORT"] ?? 8080);
@@ -44,6 +48,27 @@ function splitList(value: string | undefined): string[] | undefined {
 
 const allowedHosts = splitList(process.env["MCP_ALLOWED_HOSTS"]);
 const allowedOrigins = splitList(process.env["MCP_ALLOWED_ORIGINS"]);
+
+// ─── 호출 제한 ────────────────────────────────────────────────────────────────
+// 인증 없이 공개 운영할 때의 서버 자원 보호·남용 방지용이다.
+// (카탈로그 API 자체는 호출 횟수 제한이 없어 인증키 한도 문제는 없다)
+
+/** 0 이하 또는 파싱 불가면 해당 규칙을 끈다 */
+function readLimit(name: string, fallback: number): number {
+  const raw = process.env[name]?.trim();
+  if (raw === undefined || raw === "") return fallback;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 0;
+}
+
+const RATE_LIMIT_RULES: RateLimitRule[] = [
+  { name: "minute", limit: readLimit("MCP_RATE_LIMIT_PER_MINUTE", 20), windowMs: 60_000 },
+  { name: "hour", limit: readLimit("MCP_RATE_LIMIT_PER_HOUR", 200), windowMs: 60 * 60_000 },
+].filter((r) => r.limit > 0);
+
+const TRUST_PROXY = process.env["MCP_TRUST_PROXY"]?.trim().toLowerCase() === "true";
+
+const rateLimiter = new RateLimiter(RATE_LIMIT_RULES);
 
 function sendJson(res: http.ServerResponse, status: number, body: unknown): void {
   const payload = JSON.stringify(body);
@@ -142,6 +167,9 @@ const httpServer = http.createServer((req, res) => {
       transport: "streamable-http",
       endpoint: MCP_PATH,
       authRequired: Boolean(AUTH_TOKEN),
+      rateLimits: rateLimiter.enabled
+        ? RATE_LIMIT_RULES.map((r) => ({ per: r.name, limit: r.limit }))
+        : null,
       docs: "https://github.com/youjin8812-hub/seoul-opendata-mcp",
     });
     return;
@@ -159,6 +187,31 @@ const httpServer = http.createServer((req, res) => {
   }
 
   if (method === "POST") {
+    // 인증을 통과한 요청에만 제한을 건다 — 토큰 없이 공개 운영할 때는
+    // 모든 요청이 여기로 들어오므로 이 지점이 유일한 보호선이 된다.
+    const clientIp = resolveClientIp(req.headers, req.socket.remoteAddress, TRUST_PROXY);
+    const verdict = rateLimiter.check(clientIp);
+
+    if (rateLimiter.enabled) {
+      res.setHeader("X-RateLimit-Limit", String(verdict.limit));
+      res.setHeader("X-RateLimit-Remaining", String(verdict.remaining));
+      res.setHeader("X-RateLimit-Reset", String(Math.ceil(verdict.resetAt / 1000)));
+    }
+
+    if (!verdict.allowed) {
+      logger.warn("호출 제한 초과", { clientIp, rule: verdict.exceededRule });
+      res.setHeader("Retry-After", String(verdict.retryAfterSec));
+      sendRpcError(
+        res,
+        429,
+        -32002,
+        `호출 제한을 초과했습니다 (${verdict.exceededRule === "minute" ? "분당" : "시간당"} ${verdict.limit}회). ` +
+          `${verdict.retryAfterSec}초 후 다시 시도해 주세요. ` +
+          "여러 사용자가 함께 쓰는 공용 서버라 한도를 두고 있습니다."
+      );
+      return;
+    }
+
     void handleMcpPost(req, res);
     return;
   }
@@ -173,7 +226,17 @@ httpServer.listen(PORT, HOST, () => {
     logger.warn("SEOUL_OPEN_DATA_API_KEY가 설정되지 않았습니다 — 모든 도구 호출이 실패합니다");
   }
   if (!AUTH_TOKEN) {
-    logger.warn("MCP_AUTH_TOKEN이 없어 인증 없이 공개됩니다 — 외부 배포 시 설정을 권장합니다");
+    logger.warn(
+      rateLimiter.enabled
+        ? "MCP_AUTH_TOKEN이 없어 인증 없이 공개됩니다 — IP당 호출 제한이 적용됩니다"
+        : "MCP_AUTH_TOKEN도 호출 제한도 없습니다 — 누구나 무제한 호출할 수 있습니다"
+    );
+  }
+  if (rateLimiter.enabled) {
+    logger.info("호출 제한 활성화", {
+      rules: RATE_LIMIT_RULES.map((r) => `${r.limit}/${r.name}`),
+      trustProxy: TRUST_PROXY,
+    });
   }
   process.stderr.write(`[INFO] Seoul Open Data MCP 서버 시작됨 (http://${HOST}:${PORT}${MCP_PATH})\n`);
 });

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { extractKeywords } from "../src/parsers/extractKeywords.js";
+import { extractKeywords, MAX_KEYWORDS } from "../src/parsers/extractKeywords.js";
 
 describe("extractKeywords", () => {
   it("축제 앱 아이디어에서 핵심 키워드를 추출한다", () => {
@@ -39,11 +39,11 @@ describe("extractKeywords", () => {
     expect(keywords).toContain("버스");
   });
 
-  it("키워드는 최대 8개를 넘지 않는다", () => {
+  it("키워드는 MAX_KEYWORDS를 넘지 않는다", () => {
     const { keywords } = extractKeywords(
       "축제 병원 교통 날씨 음식 관광 취업 복지 환경 통계"
     );
-    expect(keywords.length).toBeLessThanOrEqual(8);
+    expect(keywords.length).toBeLessThanOrEqual(MAX_KEYWORDS);
   });
 
   it("불용어만 있는 입력은 빈 배열을 반환한다", () => {
@@ -77,5 +77,40 @@ describe("extractKeywords", () => {
     const { keywords } = extractKeywords("교통으로 통근하는 사람들을 위한 서비스");
     expect(keywords).toContain("교통");
     expect(keywords).not.toContain("교통으로");
+  });
+
+  // 실제 사용 중 확인된 케이스 — "그늘맵 앱 만들게 데이터 추천해줘"가
+  // ["그늘맵","만들게","추천해줘"]로 추출되어 유사어 확장이 전혀 되지 않던 버그
+  describe("요청 동사류 제거 + 합성어 유사어 확장", () => {
+    const query = "그늘맵 앱 만들게 데이터 추천해줘";
+
+    it("'만들게'/'추천해줘' 같은 요청 표현은 키워드에서 제외된다", () => {
+      const { keywords } = extractKeywords(query);
+      expect(keywords).not.toContain("만들게");
+      expect(keywords).not.toContain("추천해줘");
+    });
+
+    it("'그늘맵' 같은 합성 신조어가 사전 표제어 '그늘'로 연결된다", () => {
+      const { keywords } = extractKeywords(query);
+      expect(keywords).toContain("그늘");
+      expect(keywords).toContain("그늘막");
+      expect(keywords).toContain("폭염");
+      expect(keywords).toContain("무더위쉼터");
+    });
+
+    it("원문 키워드와 확장 유사어가 구분되어 반환된다", () => {
+      const { coreKeywords, expandedKeywords, keywords } = extractKeywords(query);
+      expect(coreKeywords).toEqual(["그늘맵"]);
+      expect(expandedKeywords).toContain("그늘막");
+      expect(expandedKeywords).not.toContain("그늘맵");
+      // keywords는 원문이 앞에 오는 합집합이다
+      expect(keywords[0]).toBe("그늘맵");
+      expect(keywords).toEqual([...coreKeywords, ...expandedKeywords]);
+    });
+
+    it("확장 유사어가 원문 키워드보다 많이 확보된다", () => {
+      const { coreKeywords, expandedKeywords } = extractKeywords(query);
+      expect(expandedKeywords.length).toBeGreaterThan(coreKeywords.length);
+    });
   });
 });

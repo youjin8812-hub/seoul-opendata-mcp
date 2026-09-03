@@ -133,6 +133,107 @@ describe("scoreAndRank", () => {
   });
 });
 
+describe("유사어 확장 대응 — 희석 방지와 관련도 게이트", () => {
+  const shadeMap = makeDataset({
+    id: "shade",
+    title: "서울시 그늘막(파라솔) 설치 위치 정보",
+    type: "FILE",
+    updateCycle: "연 1회",
+    lastUpdated: "2023-05-01",
+    tags: ["안전"],
+  });
+
+  it("유사어를 늘려도 관련 데이터의 점수가 떨어지지 않는다", () => {
+    const core = ["그늘막"];
+    const few = scoreAndRank([shadeMap], {
+      keywords: ["그늘막", "그늘"],
+      coreKeywords: core,
+      apiOnly: false,
+      realtimePreferred: false,
+    })[0]!.score;
+
+    const many = scoreAndRank([shadeMap], {
+      keywords: ["그늘막", "그늘", "폭염", "무더위쉼터", "쉼터", "가로수", "녹지"],
+      coreKeywords: core,
+      apiOnly: false,
+      realtimePreferred: false,
+    })[0]!.score;
+
+    // 기존 비율 방식에서는 49점 → 28점으로 오히려 떨어졌다
+    expect(many).toBeGreaterThanOrEqual(few);
+  });
+
+  it("키워드에 전혀 걸리지 않는 데이터셋은 형태·최신성이 좋아도 제외된다", () => {
+    const unrelated = makeDataset({
+      id: "unrelated",
+      title: "서울시 상수도 요금 부과 현황",
+      type: "API",
+      updateCycle: "실시간",
+      lastUpdated: new Date().toISOString().slice(0, 10),
+      tags: ["일반행정"],
+    });
+
+    const ranked = scoreAndRank([unrelated, shadeMap], {
+      keywords: ["그늘막", "그늘", "폭염"],
+      coreKeywords: ["그늘막"],
+      apiOnly: false,
+      realtimePreferred: false,
+    });
+
+    expect(ranked.map((r) => r.title)).toEqual([shadeMap.title]);
+  });
+
+  it("키워드가 없는 질의에서는 게이트가 동작하지 않는다", () => {
+    const ranked = scoreAndRank(
+      [makeDataset({ id: "any", title: "아무 데이터", type: "API" })],
+      { keywords: [], apiOnly: false, realtimePreferred: false }
+    );
+    expect(ranked).toHaveLength(1);
+  });
+
+  // "그늘막"으로 검색했는데 그늘막 데이터가 갱신주기·최신성에 밀려 3등으로
+  // 내려가던 문제 — 원문 키워드가 제목에 있으면 도메인 점수만으로 20점을 얻어
+  // 관련도가 순위를 주도한다.
+  it("조건이 같으면 원문 키워드가 제목에 있는 데이터가 1등이 된다", () => {
+    const common = { type: "API" as const, updateCycle: "월 1회", lastUpdated: "2026-06-10" };
+    const ranked = scoreAndRank(
+      [
+        makeDataset({ id: "a", title: "서울시 무더위쉼터 운영 현황", ...common }),
+        makeDataset({ id: "b", title: "서울시 그늘막 설치 위치 정보", ...common }),
+      ],
+      {
+        keywords: ["그늘막", "무더위쉼터", "폭염"],
+        coreKeywords: ["그늘막"],
+        apiOnly: false,
+        realtimePreferred: false,
+      }
+    );
+
+    expect(ranked[0]!.title).toBe("서울시 그늘막 설치 위치 정보");
+  });
+
+  it("원문 키워드 제목 매칭만으로 도메인 20점을 확보한다", () => {
+    const dataset = makeDataset({ id: "t", title: "서울시 그늘막 설치 위치 정보" });
+    const [scored] = scoreAndRank([dataset], {
+      keywords: ["그늘막"],
+      coreKeywords: ["그늘막"],
+      apiOnly: false,
+      realtimePreferred: false,
+    });
+
+    // 도메인 20 + 형태(UNKNOWN) 3 + 주기(미확인) 3 + 최신성 + 지역 5
+    expect(scored!.scoreBreakdown!.relevanceScore).toBeGreaterThanOrEqual(20);
+  });
+
+  it("원문 키워드 매칭이 확장 유사어 매칭보다 높은 점수를 받는다", () => {
+    const ctx = { keywords: ["그늘막", "폭염"], apiOnly: false, realtimePreferred: false };
+    const asCore = scoreAndRank([shadeMap], { ...ctx, coreKeywords: ["그늘막"] })[0]!.score;
+    const asExpanded = scoreAndRank([shadeMap], { ...ctx, coreKeywords: [] })[0]!.score;
+
+    expect(asCore).toBeGreaterThan(asExpanded);
+  });
+});
+
 describe("computeScoreBreakdown", () => {
   it("제공기관 필터가 적용되면 관련도 점수에 반영된다", () => {
     const dataset = makeDataset({ title: "테스트" });
