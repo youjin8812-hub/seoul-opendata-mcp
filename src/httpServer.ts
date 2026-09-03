@@ -50,8 +50,8 @@ const allowedHosts = splitList(process.env["MCP_ALLOWED_HOSTS"]);
 const allowedOrigins = splitList(process.env["MCP_ALLOWED_ORIGINS"]);
 
 // ─── 호출 제한 ────────────────────────────────────────────────────────────────
-// 서울시 인증키 하나를 여러 사용자가 공유하므로, 인증 없이 공개할 때
-// IP당 호출 제한이 인증키의 일일 한도를 지키는 역할을 한다.
+// 인증 없이 공개 운영할 때의 서버 자원 보호·남용 방지용이다.
+// (카탈로그 API 자체는 호출 횟수 제한이 없어 인증키 한도 문제는 없다)
 
 /** 0 이하 또는 파싱 불가면 해당 규칙을 끈다 */
 function readLimit(name: string, fallback: number): number {
@@ -188,7 +188,7 @@ const httpServer = http.createServer((req, res) => {
 
   if (method === "POST") {
     // 인증을 통과한 요청에만 제한을 건다 — 토큰 없이 공개 운영할 때는
-    // 모든 요청이 여기로 들어오므로 이 지점이 인증키 보호선이 된다.
+    // 모든 요청이 여기로 들어오므로 이 지점이 유일한 보호선이 된다.
     const clientIp = resolveClientIp(req.headers, req.socket.remoteAddress, TRUST_PROXY);
     const verdict = rateLimiter.check(clientIp);
 
@@ -207,7 +207,7 @@ const httpServer = http.createServer((req, res) => {
         -32002,
         `호출 제한을 초과했습니다 (${verdict.exceededRule === "minute" ? "분당" : "시간당"} ${verdict.limit}회). ` +
           `${verdict.retryAfterSec}초 후 다시 시도해 주세요. ` +
-          "서울시 인증키를 여러 사용자가 공유하는 서버라 한도를 두고 있습니다."
+          "여러 사용자가 함께 쓰는 공용 서버라 한도를 두고 있습니다."
       );
       return;
     }
@@ -228,8 +228,8 @@ httpServer.listen(PORT, HOST, () => {
   if (!AUTH_TOKEN) {
     logger.warn(
       rateLimiter.enabled
-        ? "MCP_AUTH_TOKEN이 없어 인증 없이 공개됩니다 — IP당 호출 제한으로 인증키를 보호합니다"
-        : "MCP_AUTH_TOKEN도 호출 제한도 없습니다 — 누구나 서울시 인증키의 일일 한도를 소진시킬 수 있습니다"
+        ? "MCP_AUTH_TOKEN이 없어 인증 없이 공개됩니다 — IP당 호출 제한이 적용됩니다"
+        : "MCP_AUTH_TOKEN도 호출 제한도 없습니다 — 누구나 무제한 호출할 수 있습니다"
     );
   }
   if (rateLimiter.enabled) {
