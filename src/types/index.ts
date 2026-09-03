@@ -206,6 +206,12 @@ export interface RefineOutput {
 /** 스코어링에 사용되는 context */
 export interface ScoreContext {
   keywords: string[];
+  /**
+   * 사용자 입력에 실제로 등장한 키워드(확장 유사어 제외).
+   * 도메인 적합도 계산에서 확장 유사어보다 높은 가중을 받는다.
+   * 생략하면 keywords 전체를 원문 키워드로 취급한다.
+   */
+  coreKeywords?: string[];
   apiOnly: boolean;
   realtimePreferred: boolean;
   /** 제공기관명(orgName) 필터가 적용된 검색인지 여부 — 관련도 분리점수 계산에 사용 */

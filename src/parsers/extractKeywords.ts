@@ -14,7 +14,22 @@ const STOP_WORDS = new Set([
   "한국", "대한민국", "전국", "맞는", "맞춤", "맞게", "찾아줘", "찾기",
   "알려줘", "보여줘", "추천", "좋은", "좋은데", "정도", "수준", "것",
   "거", "때", "후", "전", "중", "내", "외", "안", "밖", "위", "아래",
+  "아이디어", "기획", "과제", "사업", "분석기획", "제안",
 ]);
+
+/**
+ * "만들게", "추천해줘"처럼 요청 문장에만 등장하는 동사류 토큰.
+ * 어간 접두사로 판정해 활용형 전체를 한 번에 걸러낸다.
+ * (STOP_WORDS는 완전일치라 "만들게"·"추천해줘" 같은 변형을 잡지 못했다)
+ */
+const REQUEST_VERB_PREFIXES = [
+  "만들", "만드", "추천", "알려", "찾아", "보여", "뽑아", "골라", "구해",
+  "해줘", "해주", "주세요", "부탁", "필요", "싶어", "싶다", "하고싶",
+];
+
+function isRequestVerb(token: string): boolean {
+  return REQUEST_VERB_PREFIXES.some((p) => token.startsWith(p));
+}
 
 /** 도메인 키워드 사전 — 입력 텍스트에 포함되면 관련 검색어를 추가한다 */
 const DOMAIN_EXPANSIONS: Record<string, string[]> = {
@@ -90,8 +105,21 @@ const DOMAIN_EXPANSIONS: Record<string, string[]> = {
   주차장: ["주차", "공영주차장"],
   cctv: ["방범", "안전"],
   반려동물: ["동물병원", "유기동물"],
-  무더위쉼터: ["폭염", "복지시설"],
-  폭염: ["무더위쉼터", "한파"],
+  무더위쉼터: ["폭염", "복지시설", "쉼터", "그늘막", "한파쉼터"],
+  폭염: ["무더위쉼터", "한파", "그늘막", "그늘", "온열질환", "기온", "폭염저감시설"],
+  // 도시 열환경 / 그늘 — "그늘맵" 같은 신조어는 부분매칭으로 "그늘"에 연결된다
+  그늘: ["그늘막", "무더위쉼터", "폭염", "가로수", "녹지", "그늘목"],
+  그늘막: ["그늘", "파라솔", "폭염", "무더위쉼터", "횡단보도"],
+  쉼터: ["무더위쉼터", "휴게시설", "그늘막"],
+  가로수: ["녹지", "수목", "가로수길", "그늘"],
+  녹지: ["공원", "가로수", "수목", "녹지대"],
+  열섬: ["폭염", "기온", "도시열섬", "열환경"],
+  기온: ["날씨", "기상", "폭염", "온도"],
+  // 지도/공간 — 위치 기반 앱 아이디어에서 자주 쓰인다
+  지도: ["위치", "좌표", "공간정보", "지리정보"],
+  위치: ["좌표", "지도", "위치정보"],
+  경로: ["보행", "이동", "노선", "동선"],
+  보행: ["보행자", "보도", "횡단보도", "경로"],
   상권: ["소상공인", "골목상권", "상가"],
   청년: ["청년정책", "청년지원"],
   생활인구: ["체류인구", "유동인구"],
@@ -141,8 +169,32 @@ function tokenize(text: string): string[] {
 }
 
 export interface ExtractedKeywords {
+  /** 원문 키워드 + 확장 유사어 (원문이 앞에 온다) */
   keywords: string[];
+  /** 사용자 입력에 실제로 등장한 키워드 — 점수화에서 확장 유사어보다 높은 가중을 받는다 */
+  coreKeywords: string[];
+  /** 사전에서 파생된 유사어 */
+  expandedKeywords: string[];
   isRealtimeHinted: boolean;
+}
+
+/** 반환 키워드 총 상한 — 확장 유사어를 넉넉히 담기 위한 값 */
+export const MAX_KEYWORDS = 14;
+
+/**
+ * 사전 표제어를 부분 문자열로 포함하는 합성어/신조어를 표제어에 연결한다.
+ * 예: "그늘맵" → "그늘"(표제어) + 그늘의 유사어들.
+ * 카탈로그 검색은 서비스명 부분일치라, 표제어 자체가 원문보다 훨씬 잘 걸린다.
+ */
+function matchDictionaryKeys(token: string): string[] {
+  if (DOMAIN_EXPANSIONS[token]) return [token];
+  const hits: string[] = [];
+  for (const key of Object.keys(DOMAIN_EXPANSIONS)) {
+    if (key.length >= 2 && token.includes(key) && token !== key) {
+      hits.push(key);
+    }
+  }
+  return hits;
 }
 
 /**
@@ -156,35 +208,50 @@ export function extractKeywords(
 ): ExtractedKeywords {
   const tokens = tokenize(ideaText);
 
-  // 불용어 제거
-  const filtered = tokens.filter((t) => !STOP_WORDS.has(t));
+  // 불용어 + 요청 동사류("만들게", "추천해줘") 제거
+  const filtered = tokens.filter((t) => !STOP_WORDS.has(t) && !isRequestVerb(t));
 
   // 실시간 힌트 감지
   const isRealtimeHinted = tokens.some((t) => REALTIME_KEYWORDS.has(t));
 
-  // 도메인 확장
-  const expanded = new Set<string>(filtered);
-  for (const token of filtered) {
-    const expansions = DOMAIN_EXPANSIONS[token];
-    if (expansions) {
-      expansions.forEach((e) => expanded.add(e));
+  const core = new Set<string>(filtered);
+  const expanded = new Set<string>();
+
+  /** 토큰 하나를 사전 표제어에 연결하고 유사어를 확장한다 */
+  const expandToken = (token: string, limit = Infinity) => {
+    for (const key of matchDictionaryKeys(token)) {
+      // 표제어 자체도 검색어로 쓸모가 있다 ("그늘맵"→"그늘")
+      if (!core.has(key)) expanded.add(key);
+      const expansions = DOMAIN_EXPANSIONS[key] ?? [];
+      for (const e of expansions.slice(0, limit)) {
+        if (!core.has(e)) expanded.add(e);
+      }
     }
-  }
+  };
+
+  for (const token of filtered) expandToken(token);
 
   // 도메인 힌트 추가
   if (domainHint) {
     const hintTokens = tokenize(domainHint).filter(
-      (t) => !STOP_WORDS.has(t)
+      (t) => !STOP_WORDS.has(t) && !isRequestVerb(t)
     );
     hintTokens.forEach((t) => {
-      expanded.add(t);
-      const expansions = DOMAIN_EXPANSIONS[t];
-      if (expansions) expansions.slice(0, 2).forEach((e) => expanded.add(e));
+      core.add(t);
+      expandToken(t, 2);
     });
   }
 
-  // 중복 제거 후 최대 8개
-  const keywords = [...expanded].slice(0, 8);
+  // 원문 키워드를 앞에 배치해 검색 쿼리 우선순위를 확보한다
+  const coreKeywords = [...core].slice(0, MAX_KEYWORDS);
+  const expandedKeywords = [...expanded]
+    .filter((e) => !coreKeywords.includes(e))
+    .slice(0, Math.max(0, MAX_KEYWORDS - coreKeywords.length));
 
-  return { keywords, isRealtimeHinted };
+  return {
+    keywords: [...coreKeywords, ...expandedKeywords],
+    coreKeywords,
+    expandedKeywords,
+    isRealtimeHinted,
+  };
 }

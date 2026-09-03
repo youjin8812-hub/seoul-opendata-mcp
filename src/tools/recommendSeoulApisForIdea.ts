@@ -18,6 +18,16 @@ import { logger } from "../utils/logger.js";
 
 const resultCache = new MemoryCache<RecommendOutput>(5 * 60 * 1000);
 
+/**
+ * 카탈로그를 병렬 검색할 키워드 개수 상한.
+ * "그늘맵"처럼 원문 키워드 자체로는 카탈로그에 걸리지 않는 신조어가 많아,
+ * 확장 유사어까지 검색해야 후보군이 확보된다 (기존 5 → 8).
+ */
+const MAX_SEARCH_QUERIES = 8;
+
+/** 키워드 1개당 가져올 카탈로그 건수 */
+const PER_QUERY_SIZE = 20;
+
 /** 아이디어 요약 — 첫 30자 + 말줄임표 */
 function summarize(text: string): string {
   return text.length > 30 ? text.slice(0, 30) + "..." : text;
@@ -78,12 +88,12 @@ export async function recommendSeoulApisForIdea(
   }
 
   // 1. 키워드 추출
-  const { keywords, isRealtimeHinted } = extractKeywords(ideaText, domainHint);
+  const { keywords, coreKeywords, isRealtimeHinted } = extractKeywords(ideaText, domainHint);
   const effectiveRealtime = realtimePreferred || isRealtimeHinted;
 
-  logger.info("추출된 키워드", { keywords, effectiveRealtime });
+  logger.info("추출된 키워드", { keywords, coreKeywords, effectiveRealtime });
 
-  const searchQueries = keywords.slice(0, 5);
+  const searchQueries = keywords.slice(0, MAX_SEARCH_QUERIES);
   if (searchQueries.length === 0) {
     searchQueries.push(ideaText.slice(0, 20));
   }
@@ -98,14 +108,17 @@ export async function recommendSeoulApisForIdea(
   const searches = [
     // 키워드별 서비스명 검색 — orgName이 명시되면 모든 키워드 검색에 함께 적용
     ...searchQueries.map((kw) =>
-      searchSeoulCatalog({ keyword: kw, orgName: explicitOrg, start: 1, end: 20 }, serviceKey)
+      searchSeoulCatalog(
+        { keyword: kw, orgName: explicitOrg, start: 1, end: PER_QUERY_SIZE },
+        serviceKey
+      )
     ),
     // 텍스트에서 감지된 산하기관 필터 검색 추가 (명시적 orgName과 별개로 보조 검색)
     ...detectedOrgs
       .filter((org) => org !== explicitOrg)
       .map((org) =>
         searchSeoulCatalog(
-          { keyword: keywords[0] ?? "", orgName: org, start: 1, end: 20 },
+          { keyword: keywords[0] ?? "", orgName: org, start: 1, end: PER_QUERY_SIZE },
           serviceKey
         )
       ),
@@ -149,6 +162,7 @@ export async function recommendSeoulApisForIdea(
   // 4. 점수화 + 정렬 + 상위 N개
   const ranked = scoreAndRank(normalized, {
     keywords,
+    coreKeywords,
     apiOnly,
     realtimePreferred: effectiveRealtime,
     orgFilterApplied: Boolean(explicitOrg),
@@ -165,6 +179,12 @@ export async function recommendSeoulApisForIdea(
       errors.length === 0 && {
         warning:
           "일치하는 서울시 데이터셋을 찾지 못했습니다. 다른 표현이나 domainHint를 시도해 보세요.",
+      }),
+    // 검색 결과는 있었지만 관련도 게이트를 통과한 데이터가 없는 경우 —
+    // 형태·최신성만 높은 무관한 데이터를 억지로 추천하지 않고 명시적으로 알린다.
+    ...(rawItems.length > 0 &&
+      ranked.length === 0 && {
+        warning: `검색된 ${normalized.length}건 중 '${keywords.slice(0, 3).join("', '")}'와(과) 실제로 관련된 데이터가 없었습니다. domainHint로 정책분야를 지정하거나 더 일반적인 용어를 써 보세요.`,
       }),
   };
 
