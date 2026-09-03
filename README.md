@@ -10,18 +10,18 @@
 
 ---
 
-## 🚀 지금 바로 써보기 (설치·인증키 발급 불필요)
+## 🚀 지금 바로 써보기 (설치·인증키·토큰 모두 불필요)
 
-이미 원격 서버가 떠 있어서, **내 컴퓨터에 아무것도 설치하지 않고 URL만 연결하면 바로 씁니다.** 서울시 인증키도 각자 발급받을 필요 없이 공용 서버 하나를 같이 씁니다.
+이미 원격 서버가 떠 있어서, **내 컴퓨터에 아무것도 설치하지 않고 URL만 등록하면 바로 씁니다.** 서울시 인증키도 각자 발급받을 필요 없이 서버가 대신 들고 있고, 별도 토큰이나 인증 헤더도 필요 없습니다.
 
-> 연결에 필요한 **토큰**은 관리자(레포 소유자)에게 문의해서 받으세요. 아래 예시의 `<TOKEN>` 자리에 넣으면 됩니다.
+> 필요한 건 이 주소 하나입니다 — `https://seoul-opendata-mcp.fly.dev/mcp`
 
 <table>
 <tr><td><b>Claude.ai (웹)</b></td><td>
 
 설정 → Connectors → **Add custom connector**
 - URL: `https://seoul-opendata-mcp.fly.dev/mcp`
-- 헤더: `Authorization: Bearer <TOKEN>`
+- 인증/헤더 설정 없음
 
 </td></tr>
 <tr><td><b>Claude Desktop / Cursor</b></td><td>
@@ -31,8 +31,7 @@
 {
   "mcpServers": {
     "seoul-opendata": {
-      "url": "https://seoul-opendata-mcp.fly.dev/mcp",
-      "headers": { "Authorization": "Bearer <TOKEN>" }
+      "url": "https://seoul-opendata-mcp.fly.dev/mcp"
     }
   }
 }
@@ -43,8 +42,7 @@
 
 ```bash
 claude mcp add --transport http seoul-opendata \
-  https://seoul-opendata-mcp.fly.dev/mcp \
-  --header "Authorization: Bearer <TOKEN>"
+  https://seoul-opendata-mcp.fly.dev/mcp
 ```
 
 등록 후 새 세션을 열면 바로 연결됩니다 (`claude mcp list`로 확인).
@@ -359,7 +357,8 @@ GET  /healthz   헬스체크
 
 ```bash
 fly launch --no-deploy --copy-config
-fly secrets set SEOUL_OPEN_DATA_API_KEY=발급받은키 MCP_AUTH_TOKEN=$(openssl rand -hex 32)
+fly secrets set SEOUL_OPEN_DATA_API_KEY=발급받은키
+# 접근을 제한하고 싶다면 (선택): fly secrets set MCP_AUTH_TOKEN=$(openssl rand -hex 32)
 fly deploy
 curl -s https://<app>.fly.dev/healthz
 ```
@@ -367,12 +366,14 @@ curl -s https://<app>.fly.dev/healthz
 **클라이언트 등록**
 
 ```bash
-claude mcp add --transport http seoul-opendata https://<app>.fly.dev/mcp \
-  --header "Authorization: Bearer <MCP_AUTH_TOKEN>"
+claude mcp add --transport http seoul-opendata https://<app>.fly.dev/mcp
+
+# MCP_AUTH_TOKEN을 설정한 경우에만 헤더를 덧붙입니다
+#   --header "Authorization: Bearer <MCP_AUTH_TOKEN>"
 ```
 
 - 무상태 모드라 머신을 늘려도 세션이 꼬이지 않고, 트래픽이 없으면 머신이 자동으로 잠들어 비용이 거의 들지 않습니다.
-- **공개 배포 시 `MCP_AUTH_TOKEN`을 반드시 설정하세요.** 비워두면 누구나 호출해 인증키의 일일 한도를 소진시킬 수 있습니다.
+- `MCP_AUTH_TOKEN`은 **선택**입니다. 비워두면 누구나 URL만으로 붙을 수 있어 배포·공유가 가장 간단하고(현재 공개 서버가 이 방식), 설정하면 `Authorization: Bearer` 헤더를 요구합니다. 다만 열어두면 호출량이 인증키의 일일 한도를 소진할 수 있으니 트래픽 상황에 따라 판단하세요.
 
 자세한 환경변수·플랫폼별 절차·운영 주의점은 **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** 참고.
 
