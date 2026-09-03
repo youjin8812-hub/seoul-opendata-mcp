@@ -191,6 +191,40 @@ describe("유사어 확장 대응 — 희석 방지와 관련도 게이트", () 
     expect(ranked).toHaveLength(1);
   });
 
+  // "그늘막"으로 검색했는데 그늘막 데이터가 갱신주기·최신성에 밀려 3등으로
+  // 내려가던 문제 — 원문 키워드가 제목에 있으면 도메인 점수만으로 20점을 얻어
+  // 관련도가 순위를 주도한다.
+  it("조건이 같으면 원문 키워드가 제목에 있는 데이터가 1등이 된다", () => {
+    const common = { type: "API" as const, updateCycle: "월 1회", lastUpdated: "2026-06-10" };
+    const ranked = scoreAndRank(
+      [
+        makeDataset({ id: "a", title: "서울시 무더위쉼터 운영 현황", ...common }),
+        makeDataset({ id: "b", title: "서울시 그늘막 설치 위치 정보", ...common }),
+      ],
+      {
+        keywords: ["그늘막", "무더위쉼터", "폭염"],
+        coreKeywords: ["그늘막"],
+        apiOnly: false,
+        realtimePreferred: false,
+      }
+    );
+
+    expect(ranked[0]!.title).toBe("서울시 그늘막 설치 위치 정보");
+  });
+
+  it("원문 키워드 제목 매칭만으로 도메인 20점을 확보한다", () => {
+    const dataset = makeDataset({ id: "t", title: "서울시 그늘막 설치 위치 정보" });
+    const [scored] = scoreAndRank([dataset], {
+      keywords: ["그늘막"],
+      coreKeywords: ["그늘막"],
+      apiOnly: false,
+      realtimePreferred: false,
+    });
+
+    // 도메인 20 + 형태(UNKNOWN) 3 + 주기(미확인) 3 + 최신성 + 지역 5
+    expect(scored!.scoreBreakdown!.relevanceScore).toBeGreaterThanOrEqual(20);
+  });
+
   it("원문 키워드 매칭이 확장 유사어 매칭보다 높은 점수를 받는다", () => {
     const ctx = { keywords: ["그늘막", "폭염"], apiOnly: false, realtimePreferred: false };
     const asCore = scoreAndRank([shadeMap], { ...ctx, coreKeywords: ["그늘막"] })[0]!.score;
