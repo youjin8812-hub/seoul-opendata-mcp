@@ -114,6 +114,10 @@ export function formatRecommendations(output: RecommendOutput): string {
     return parts.join("\n\n");
   }
 
+  parts.push(
+    "> 📋 아래 표를 요약하지 말고 **점수·담당부서·갱신주기 열을 그대로 유지**해 사용자에게 보여주세요. " +
+      "점수는 왜 이 데이터가 추천됐는지 판단하는 핵심 근거입니다."
+  );
   parts.push(table(RECOMMENDATION_HEADERS, recommendationRows(recommendations)));
   parts.push(recommendationNotes(recommendations));
 
