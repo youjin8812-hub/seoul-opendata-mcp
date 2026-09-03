@@ -132,6 +132,18 @@ const REALTIME_KEYWORDS = new Set([
   "실시간", "현재", "즉시", "바로", "라이브", "live", "현황",
 ]);
 
+/**
+ * 카탈로그 전반에 흔히 등장해 변별력이 낮은 범용 명사.
+ * 예: "지하철 실시간 열차 위치정보"는 "위치"·"실시간"만으로 도메인 40점을 다 채워,
+ * "따릉이 대여소 위치와 실시간 현황" 질의에서 따릉이와 무관한데도 최상위에 올라왔다.
+ * 검색 재현율은 유지하되(keywords에는 남김) 점수화에서는 coreKeywords가 아닌
+ * expandedKeywords로 취급해 원문 키워드보다 낮은 가중치(title 7·tag 3·body 2)를 준다.
+ */
+const GENERIC_CORE_TERMS = new Set([
+  ...REALTIME_KEYWORDS,
+  "위치", "정보", "상태", "자료", "현행",
+]);
+
 /** 단어 끝에 붙는 한국어 조사/어미를 제거 */
 const ENDINGS = [
   "으로부터", "에서부터", "로부터", "으로서", "에서는", "로서는",
@@ -214,8 +226,14 @@ export function extractKeywords(
   // 실시간 힌트 감지
   const isRealtimeHinted = tokens.some((t) => REALTIME_KEYWORDS.has(t));
 
-  const core = new Set<string>(filtered);
+  // 범용 명사("위치"·"실시간"·"현황" 등)는 검색 재현율을 위해 남기되,
+  // 도메인 무관 데이터가 원문 키워드급 가중치로 오르지 않도록 core에서 제외한다.
+  const core = new Set<string>();
   const expanded = new Set<string>();
+  for (const t of filtered) {
+    if (GENERIC_CORE_TERMS.has(t)) expanded.add(t);
+    else core.add(t);
+  }
 
   /** 토큰 하나를 사전 표제어에 연결하고 유사어를 확장한다 */
   const expandToken = (token: string, limit = Infinity) => {
