@@ -21,6 +21,9 @@ import type {
 /** 표에서 값이 없을 때 쓰는 표기 */
 const EMPTY = "—";
 
+/** 모든 도구 응답에 공통으로 붙이는 안내 — 표를 산문으로 풀어 쓰지 말라는 지시 */
+const KEEP_TABLE_NOTICE = "> 📋 아래 표는 그대로 사용자에게 보여주세요. 산문으로 요약하지 마세요.";
+
 /** SRV_TYPE 기반 내부 타입을 사용자가 읽는 말로 바꾼다 */
 function typeLabel(type: DatasetType): string {
   if (type === "API") return "OpenAPI";
@@ -138,6 +141,7 @@ export function formatSearchResults(output: SearchOutput): string {
     return parts.join("\n\n");
   }
 
+  parts.push(KEEP_TABLE_NOTICE);
   parts.push(
     table(
       ["#", "데이터명", "요약", "제공기관", "정책분야"],
@@ -166,6 +170,7 @@ export function formatRecentUpdates(output: RecentUpdatesOutput): string {
     return parts.join("\n\n");
   }
 
+  parts.push(KEEP_TABLE_NOTICE);
   parts.push(
     table(
       ["#", "데이터명", "제공형식", "갱신주기", "최종갱신", "제공기관", "구분"],
@@ -196,6 +201,7 @@ export function formatDatasetDetail(output: DatasetDetailOutput): string {
   rows.push(["인증방식", cell(output.authMethod)]);
   if (output.detailPageUrl) rows.push(["상세페이지", output.detailPageUrl]);
 
+  parts.push(KEEP_TABLE_NOTICE);
   parts.push(table(["항목", "내용"], rows));
 
   if (output.note?.trim()) {
@@ -221,6 +227,7 @@ export function formatRefinedRecommendations(items: Recommendation[]): string {
     return parts.join("\n\n");
   }
 
+  parts.push(KEEP_TABLE_NOTICE);
   parts.push(table(RECOMMENDATION_HEADERS, recommendationRows(items)));
   return parts.join("\n\n");
 }
