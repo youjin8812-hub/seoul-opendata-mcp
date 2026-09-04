@@ -254,14 +254,13 @@ export const TOOL_DEFINITIONS = [
 // ─── 응답 조립 ────────────────────────────────────────────────────────────────
 
 /**
- * 마크다운 표는 content에, 원본 데이터는 content(JSON 블록)와 structuredContent
- * 양쪽에 함께 담는다.
+ * 마크다운 표와 원본 JSON을 content 두 블록으로만 담는다. structuredContent는
+ * 절대 채우지 않는다.
  *
- * structuredContent만 쓰고 content에서 JSON을 빼봤더니, 일부 MCP 클라이언트가
- * structuredContent가 있으면 그것만 사람에게 보여주고 content(마크다운 표)를
- * 아예 무시해버리는 걸 확인했다 — 표를 살리려다 완전히 없애버린 셈이었다.
- * 그래서 content에는 예전처럼 마크다운+JSON을 함께 넣어 표가 항상 보이게 하고,
- * structuredContent는 스펙을 지키는 클라이언트를 위해 추가로만 채운다.
+ * structuredContent를 함께 채워봤더니, 실제 MCP 클라이언트(Claude Code)가
+ * 그 필드가 존재하기만 하면 content(마크다운 표)는 아예 보지 않고
+ * structuredContent만 사람에게 보여주는 것을 확인했다 — content에 표를 다시
+ * 넣어도 소용없었다. 그래서 structuredContent 자체를 쓰지 않는다.
  */
 function toolResult(markdown: string, data: object) {
   return {
@@ -272,7 +271,6 @@ function toolResult(markdown: string, data: object) {
         text: `<!-- 구조화된 결과 (refine_seoul_recommendations 입력용) -->\n${JSON.stringify(data)}`,
       },
     ],
-    structuredContent: data as Record<string, unknown>,
   };
 }
 
