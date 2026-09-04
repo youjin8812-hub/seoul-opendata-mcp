@@ -254,22 +254,18 @@ export const TOOL_DEFINITIONS = [
 // ─── 응답 조립 ────────────────────────────────────────────────────────────────
 
 /**
- * 읽기용 마크다운을 먼저, 구조화된 JSON을 뒤에 담는다.
+ * 사람이 읽는 마크다운은 content로, 기계가 읽는 원본 데이터는 structuredContent로 분리한다.
  *
- * 마크다운만 주면 refine_seoul_recommendations가 이전 결과를 그대로 돌려받을 수
- * 없고, JSON만 주면 클라이언트마다 요약이 달라져 제공형식·갱신주기·담당부서 같은
- * 항목이 누락된다. 두 블록을 함께 보내 양쪽을 만족시킨다.
- * JSON은 들여쓰기 없이 직렬화해 토큰을 아낀다.
+ * 이전에는 원본 JSON을 두 번째 text 블록으로 content에 함께 넣었는데, 호출하는
+ * 어시스턴트가 마크다운 표 대신 그 JSON을 보고 자기 방식대로 답을 다시 요약·재구성해
+ * 버려 "표가 안 뜬다"는 문제가 생겼다. MCP 스펙의 structuredContent 필드는 content와
+ * 별도로 전달되므로, 어시스턴트는 content(마크다운)를 그대로 보여주고
+ * structuredContent는 refine_seoul_recommendations 같은 후속 호출에만 쓰면 된다.
  */
-function toolResult(markdown: string, data: unknown) {
+function toolResult(markdown: string, data: object) {
   return {
-    content: [
-      { type: "text", text: markdown },
-      {
-        type: "text",
-        text: `<!-- 구조화된 결과 (refine_seoul_recommendations 입력용) -->\n${JSON.stringify(data)}`,
-      },
-    ],
+    content: [{ type: "text", text: markdown }],
+    structuredContent: data as Record<string, unknown>,
   };
 }
 
