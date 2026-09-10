@@ -80,6 +80,13 @@ const RefineInputSchema = z.object({
       reason: z.string(),
       score: z.number(),
       detailUrl: z.string(),
+      // 재정렬 결과도 같은 표(최종갱신·담당부서·점수 근거)로 보여주려면
+      // 이전 결과의 부가 필드를 그대로 통과시켜야 한다 — 없으면 표가 "—"로 비어 버린다.
+      lastUpdated: z.string().optional(),
+      department: z.string().optional(),
+      brm: z.looseObject({}).optional(),
+      organization: z.looseObject({}).optional(),
+      scoreBreakdown: z.looseObject({}).optional(),
     })
   ),
   apiOnly: z.boolean().optional(),

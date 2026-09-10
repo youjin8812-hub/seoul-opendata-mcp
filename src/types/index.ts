@@ -124,7 +124,7 @@ export interface Recommendation {
   brm?: BrmClassification;
   /** 제공기관 유형 분류결과 — 신규 필드 */
   organization?: OrganizationClassification;
-  /** 질문 관련도·데이터 활용도 분리 점수 — 신규 필드 (기존 legacy score는 그대로 유지) */
+  /** 점수 내역 — 관련도(65)·활용도(30) 분해와 매칭 근거. 합계는 score와 같다 */
   scoreBreakdown?: ScoreBreakdown;
   /** 최종갱신일자 (YYYY-MM-DD) — 신규 필드 */
   lastUpdated?: string;
@@ -132,11 +132,21 @@ export interface Recommendation {
   department?: string;
 }
 
-/** 관련도·활용도 분리 점수 */
+/**
+ * 점수 내역 — 총점 95점 = 관련도 65 + 활용도 30.
+ * totalScore === relevanceScore + qualityScore === Recommendation.score 가 항상 성립한다.
+ */
 export interface ScoreBreakdown {
-  legacyScore: number;
+  /** 총점 (0~95) — Recommendation.score와 같은 값 */
+  totalScore: number;
+  /** 질문 관련도 (0~65) */
   relevanceScore: number;
+  /** 데이터 활용도 (0~30) */
   qualityScore: number;
+  /** 적용된 관련도 항목 대비 충족 비율 (0~1) */
+  relevanceRatio: number;
+  /** 실제로 일치한 키워드 (제목 일치 우선) */
+  matchedKeywords: string[];
   relevanceReasons: string[];
   qualityReasons: string[];
 }
@@ -228,14 +238,18 @@ export interface ScoreContext {
   keywords: string[];
   /**
    * 사용자 입력에 실제로 등장한 키워드(확장 유사어 제외).
-   * 도메인 적합도 계산에서 확장 유사어보다 높은 가중을 받는다.
+   * 키워드 일치 계산에서 확장 유사어보다 높은 가중을 받는다.
    * 생략하면 keywords 전체를 원문 키워드로 취급한다.
    */
   coreKeywords?: string[];
   apiOnly: boolean;
   realtimePreferred: boolean;
-  /** 제공기관명(orgName) 필터가 적용된 검색인지 여부 — 관련도 분리점수 계산에 사용 */
-  orgFilterApplied?: boolean;
+  /**
+   * 제공기관명(orgName) 필터 값 — 관련도의 제공기관 항목 판정에 쓴다.
+   * 산하기관 보조검색으로 다른 기관 데이터도 후보에 섞이므로,
+   * "필터가 걸렸는가"가 아니라 "이 데이터가 그 기관 것인가"를 건별로 확인한다.
+   */
+  orgFilter?: string;
 }
 
 export interface ApiParameter {

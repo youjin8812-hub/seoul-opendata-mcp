@@ -1,39 +1,124 @@
 /**
- * 관련도(relevance)·활용도(quality) 분리 점수의 배점 설정.
- * 기존 legacy 95점 스코어(src/ranking/scoreDataset.ts)와는 별개이며,
- * 이 값을 조정해도 legacy 점수·정렬 결과에는 영향을 주지 않는다.
+ * 점수 배점의 단일 기준 — 총 95점.
+ *
+ *   관련도(relevance) 65점 + 활용도(quality) 30점 = 95점
+ *
+ * 이전 구조에서는 "정렬용 legacy 95점"과 "표시용 관련도/활용도 점수"가 따로
+ * 계산돼, 표에 찍힌 점수와 근거가 서로 맞지 않았다. 이제는 한 곳에서만 계산하고
+ * score === relevanceScore + qualityScore 가 항상 성립한다.
+ *
+ * 배점 철학: 순위는 "질문과 얼마나 유관한가"가 지배해야 한다.
+ * 형태(OpenAPI)·갱신주기·최신성은 유관한 후보들 사이의 우열을 가리는 보조 축이므로
+ * 활용도 30점으로 묶어 관련도(65점)를 넘지 못하게 했다.
+ * 관련도 0점짜리가 형태·주기·최신성만으로 상위에 오르는 일이 구조적으로 불가능하다.
  */
+
+// ─── 관련도 65점 ──────────────────────────────────────────────────────────────
+
 export const RELEVANCE_WEIGHTS = {
-  /** 데이터명·키워드·동의어 일치 (도메인 점수 재사용) */
-  keywordMatch: 40,
-  /** 정책분야(BRM) 일치 */
-  policyFieldMatch: 15,
-  /** 지역조건 일치 */
-  regionMatch: 10,
-  /** 실시간성 요구 일치 */
-  realtimeMatch: 10,
-  /** 제공기관 조건 일치 */
-  organizationMatch: 5,
+  /** 키워드 일치 — 원문 키워드·확장 유사어를 IDF 가중 커버리지로 계산 */
+  keyword: 47,
+  /** 정책분야(BRM) 일치 — 질의에서 정책분야가 추론될 때만 적용 */
+  policyField: 6,
+  /** 지역(자치구) 일치 — 질의에 자치구가 명시될 때만 적용 */
+  region: 5,
+  /** 실시간성 요구 일치 — 실시간 요청일 때만 적용 */
+  realtime: 4,
+  /** 제공기관 조건 일치 — 제공기관 필터가 있을 때만 적용 */
+  organization: 3,
 } as const;
+
+// ─── 활용도 30점 ──────────────────────────────────────────────────────────────
 
 export const QUALITY_WEIGHTS = {
-  /** 최신성 (최근 갱신일) */
-  recency: 10,
+  /** 제공형식 — OpenAPI 10 / 파일 5 / 미상 1 */
+  formatAvailability: 10,
   /** 갱신주기 */
-  updateCycle: 10,
-  /** 제공형식(OpenAPI/File/Sheet) 존재 여부 */
-  formatAvailability: 15,
-  /** 제공기관·제공부서 존재 여부 */
-  organizationPresence: 10,
-  /** 담당부서·문의처 존재 여부 */
-  contactPresence: 5,
-  /** 공식 상세페이지 존재 여부 */
-  detailPagePresence: 5,
-  /** 메타정보 충실도 (핵심 필드 채움 비율) */
-  metadataCompleteness: 10,
+  updateCycle: 8,
+  /** 최신성 (최종갱신일) */
+  recency: 8,
+  /** 메타정보 충실도 (제공기관·부서·문의처·상세페이지 등 핵심 필드 채움 비율) */
+  metadataCompleteness: 4,
 } as const;
 
-export const RELEVANCE_MAX =
-  Object.values(RELEVANCE_WEIGHTS).reduce((a, b) => a + b, 0);
-export const QUALITY_MAX =
-  Object.values(QUALITY_WEIGHTS).reduce((a, b) => a + b, 0);
+export const RELEVANCE_MAX = Object.values(RELEVANCE_WEIGHTS).reduce((a, b) => a + b, 0); // 65
+export const QUALITY_MAX = Object.values(QUALITY_WEIGHTS).reduce((a, b) => a + b, 0); // 30
+export const TOTAL_MAX = RELEVANCE_MAX + QUALITY_MAX; // 95
+
+// ─── 키워드 매칭 세부 계수 ────────────────────────────────────────────────────
+
+/**
+ * 매칭 위치별 인정 비율.
+ * 제목에 있는 단어가 그 데이터셋의 주제다. 태그(정책분야)는 그다음이고,
+ * 제공기관·부서명(본문)에 걸린 건 우연일 때가 많아 크게 낮춘다.
+ */
+export const MATCH_POSITION_FACTOR = {
+  title: 1,
+  tag: 0.6,
+  body: 0.25,
+} as const;
+
+/**
+ * 확장 유사어의 가중 계수 — 사용자가 실제로 쓴 원문 키워드보다 낮게 본다.
+ * 별도 배점 항목으로 분리하지 않고 같은 키워드 배점 안에서 계수로 낮추는 이유:
+ * 항목을 나누면 "그늘맵"처럼 원문이 카탈로그에 없는 신조어 질의에서
+ * 유사어로만 맞은 정답 데이터가 구조적으로 낮은 점수에 갇힌다.
+ */
+export const EXPANDED_KEYWORD_FACTOR = 0.55;
+
+/**
+ * 확장 유사어의 체감 계수.
+ *
+ * 원문 키워드는 사용자가 함께 쓴 조건이므로 전부 충족해야 한다(AND).
+ * 반면 확장 유사어는 같은 개념의 다른 이름이다 — "그늘막·무더위쉼터·폭염저감시설"을
+ * 전부 담은 데이터를 요구하는 건 말이 안 된다. 그래서 가장 잘 맞은 유사어 하나를
+ * 온전히 인정하고, 그다음부터는 이 비율로 체감시킨다(OR에 가깝게).
+ *
+ * 이 처리가 없으면 유사어가 여러 갈래로 퍼진 질의에서 정답조차 커버리지 20~40%에
+ * 머물러, 정답과 곁가지 데이터의 점수 차가 사라진다.
+ */
+export const EXPANDED_KEYWORD_DECAY = 0.5;
+
+/**
+ * IDF 가중의 하한. 카탈로그 후보 전부에 등장하는 범용어("정보"·"현황"·"서울시")는
+ * 변별력이 없으므로 가중이 0에 수렴하지만, 완전히 0이 되면 매칭 근거 표기가
+ * 사라지므로 최소값을 남긴다.
+ */
+export const MIN_KEYWORD_WEIGHT = 0.15;
+
+/** 이 길이 이하의 키워드는 제공기관·부서명(본문) 우연 일치를 인정하지 않는다 */
+export const SHORT_KEYWORD_LENGTH = 2;
+
+// ─── 관련도 게이트 ────────────────────────────────────────────────────────────
+
+/**
+ * "주요 키워드" 판정선 — 최고 가중 대비 이 비율 이상이면 질의의 주제어급으로 본다.
+ * 주제어를 하나도 못 맞춘 데이터는 범용어를 여러 개 맞춰 커버리지를 채웠더라도 탈락한다.
+ * ("도서관 현황 정보" 질의에서 '현황·정보'만 맞은 상수도 데이터를 걸러내는 규칙)
+ */
+export const PRIMARY_KEYWORD_WEIGHT_RATIO = 0.5;
+
+/**
+ * 키워드 커버리지 절대 하한. 질의 키워드 중 변별력 있는 부분을 이만큼도 못 맞춘
+ * 데이터는 활용도가 아무리 높아도 후보에서 제외한다.
+ */
+export const MIN_KEYWORD_RATIO = 0.15;
+
+/**
+ * 커버리지 상대 기준 — "그 질의에서 제일 잘 맞은 데이터"의 몇 배까지 인정할지.
+ *
+ * 절대 기준만 쓰면 질의 성격에 따라 한쪽으로 치우친다.
+ *   - 유사어가 여러 갈래로 흩어진 질의("그늘맵" → 그늘막·무더위쉼터·폭염·가로수)는
+ *     정답들이 각자 한 갈래씩만 맞아 커버리지가 모두 낮다. 절대 기준으로 자르면
+ *     정작 필요한 데이터가 통째로 사라진다.
+ *   - 반대로 딱 떨어지는 질의("도서관 현황 정보")에서는 100% 맞은 데이터가 있는데도
+ *     범용어만 맞은 데이터가 절대 기준을 넘어 끼어든다.
+ * 그래서 절대 하한과 함께, 그 질의의 최고 매칭 대비 40%에 못 미치는 후보를 걸러낸다.
+ */
+export const RELATIVE_KEYWORD_RATIO = 0.4;
+
+/** 총점 하한 (95점 만점 기준) */
+export const MIN_TOTAL_SCORE = 35;
+
+/** 키워드가 없는 질의(필터 전용)의 중립 관련도 비율 */
+export const NEUTRAL_RELEVANCE_RATIO = 0.5;

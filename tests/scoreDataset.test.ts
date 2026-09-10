@@ -1,5 +1,15 @@
 import { describe, it, expect } from "vitest";
-import { scoreAndRank, computeScoreBreakdown } from "../src/ranking/scoreDataset.js";
+import {
+  scoreAndRank,
+  computeScoreBreakdown,
+  cycleScore,
+  recencyScore,
+} from "../src/ranking/scoreDataset.js";
+import {
+  RELEVANCE_MAX,
+  QUALITY_MAX,
+  TOTAL_MAX,
+} from "../src/config/scoringConfig.js";
 import type { NormalizedDataset } from "../src/types/index.js";
 
 function makeDataset(overrides: Partial<NormalizedDataset>): NormalizedDataset {
@@ -103,17 +113,22 @@ describe("scoreAndRank", () => {
     }
   });
 
-  it("scoreBreakdown이 legacy score와 별개로 함께 반환된다", () => {
+  it("총점은 관련도 + 활용도와 정확히 일치한다 (95점 만점)", () => {
     const datasets = [
       makeDataset({ id: "1", title: "축제 API", type: "API", description: "축제 행사 정보" }),
     ];
     const ctx = { keywords: ["축제"], apiOnly: false, realtimePreferred: false };
     const ranked = scoreAndRank(datasets, ctx);
+    const breakdown = ranked[0]!.scoreBreakdown!;
 
-    expect(ranked[0]!.scoreBreakdown).toBeDefined();
-    expect(ranked[0]!.scoreBreakdown!.legacyScore).toBe(ranked[0]!.score);
-    expect(ranked[0]!.scoreBreakdown!.relevanceScore).toBeGreaterThan(0);
-    expect(ranked[0]!.scoreBreakdown!.qualityScore).toBeGreaterThan(0);
+    expect(breakdown).toBeDefined();
+    expect(breakdown.totalScore).toBe(ranked[0]!.score);
+    expect(breakdown.relevanceScore + breakdown.qualityScore).toBe(ranked[0]!.score);
+    expect(breakdown.relevanceScore).toBeGreaterThan(0);
+    expect(breakdown.relevanceScore).toBeLessThanOrEqual(RELEVANCE_MAX);
+    expect(breakdown.qualityScore).toBeGreaterThan(0);
+    expect(breakdown.qualityScore).toBeLessThanOrEqual(QUALITY_MAX);
+    expect(ranked[0]!.score).toBeLessThanOrEqual(TOTAL_MAX);
   });
 
   it("brm/organization 분류결과가 Recommendation에 그대로 전달된다", () => {
@@ -212,7 +227,7 @@ describe("유사어 확장 대응 — 희석 방지와 관련도 게이트", () 
     expect(ranked[0]!.title).toBe("서울시 그늘막 설치 위치 정보");
   });
 
-  it("원문 키워드 제목 매칭만으로 도메인 20점을 확보한다", () => {
+  it("질의 조건을 온전히 충족하면 관련도 만점(65)에 도달한다", () => {
     const dataset = makeDataset({ id: "t", title: "서울시 그늘막 설치 위치 정보" });
     const [scored] = scoreAndRank([dataset], {
       keywords: ["그늘막"],
@@ -221,26 +236,42 @@ describe("유사어 확장 대응 — 희석 방지와 관련도 게이트", () 
       realtimePreferred: false,
     });
 
-    // 도메인 20 + 형태(UNKNOWN) 3 + 주기(미확인) 3 + 최신성 + 지역 5
-    expect(scored!.scoreBreakdown!.relevanceScore).toBeGreaterThanOrEqual(20);
+    expect(scored!.scoreBreakdown!.relevanceScore).toBe(RELEVANCE_MAX);
+    expect(scored!.scoreBreakdown!.matchedKeywords).toContain("그늘막");
   });
 
-  it("원문 키워드 매칭이 확장 유사어 매칭보다 높은 점수를 받는다", () => {
-    const ctx = { keywords: ["그늘막", "폭염"], apiOnly: false, realtimePreferred: false };
-    const asCore = scoreAndRank([shadeMap], { ...ctx, coreKeywords: ["그늘막"] })[0]!.score;
-    const asExpanded = scoreAndRank([shadeMap], { ...ctx, coreKeywords: [] })[0]!.score;
+  it("같은 질의에서 원문 키워드에 걸린 데이터가 유사어에만 걸린 데이터보다 높다", () => {
+    const common = { type: "API" as const, updateCycle: "일간", lastUpdated: "2026-08-01" };
+    const ranked = scoreAndRank(
+      [
+        makeDataset({ id: "syn", title: "서울시 폭염 대응 상황 정보", ...common }),
+        makeDataset({ id: "core", title: "서울시 그늘막 설치 위치 정보", ...common }),
+      ],
+      {
+        keywords: ["그늘막", "폭염"],
+        coreKeywords: ["그늘막"],
+        apiOnly: false,
+        realtimePreferred: false,
+      }
+    );
 
-    expect(asCore).toBeGreaterThan(asExpanded);
+    expect(ranked[0]!.title).toBe("서울시 그늘막 설치 위치 정보");
+    expect(ranked[0]!.score).toBeGreaterThan(ranked[1]!.score);
   });
 });
 
 describe("computeScoreBreakdown", () => {
   it("제공기관 필터가 적용되면 관련도 점수에 반영된다", () => {
     const dataset = makeDataset({ title: "테스트" });
-    const ctx = { keywords: [], apiOnly: false, realtimePreferred: false, orgFilterApplied: true };
-    const breakdown = computeScoreBreakdown(dataset, 20, ctx);
+    const ctx = {
+      keywords: [],
+      apiOnly: false,
+      realtimePreferred: false,
+      orgFilter: "테스트기관",
+    };
+    const breakdown = computeScoreBreakdown(dataset, ctx);
 
-    expect(breakdown.legacyScore).toBe(20);
+    expect(breakdown.totalScore).toBe(breakdown.relevanceScore + breakdown.qualityScore);
     expect(breakdown.relevanceReasons.some((r) => r.includes("제공기관"))).toBe(true);
   });
 
@@ -268,9 +299,41 @@ describe("computeScoreBreakdown", () => {
     });
     const ctx = { keywords: [], apiOnly: false, realtimePreferred: false };
 
-    const sparseBreakdown = computeScoreBreakdown(sparse, 0, ctx);
-    const richBreakdown = computeScoreBreakdown(rich, 0, ctx);
+    const sparseBreakdown = computeScoreBreakdown(sparse, ctx);
+    const richBreakdown = computeScoreBreakdown(rich, ctx);
 
     expect(richBreakdown.qualityScore).toBeGreaterThan(sparseBreakdown.qualityScore);
+  });
+});
+
+describe("활용도 세부 점수", () => {
+  it("'주기없음'을 주간 갱신으로 오인하지 않는다", () => {
+    // 이전 구현은 includes("주")에 걸려 갱신을 안 하는 데이터에 주간급 점수를 줬다
+    expect(cycleScore("주기없음")).toBe(1);
+    expect(cycleScore("주간")).toBeGreaterThan(cycleScore("주기없음"));
+  });
+
+  it("갱신이 잦을수록 높은 점수를 받는다", () => {
+    expect(cycleScore("실시간")).toBeGreaterThan(cycleScore("일간"));
+    expect(cycleScore("일간")).toBeGreaterThanOrEqual(cycleScore("주간"));
+    expect(cycleScore("주간")).toBeGreaterThan(cycleScore("월간"));
+    expect(cycleScore("월간")).toBeGreaterThan(cycleScore("분기별"));
+    expect(cycleScore("분기별")).toBeGreaterThan(cycleScore("연간"));
+  });
+
+  it("카탈로그에 실제로 쓰이는 '수시'를 미확인으로 처리하지 않는다", () => {
+    expect(cycleScore("수시")).toBeGreaterThan(cycleScore("미확인"));
+  });
+
+  it("최신성은 최종갱신일이 가까울수록 높고, 값이 없으면 최저점이다", () => {
+    const recent = new Date();
+    const old = new Date();
+    old.setFullYear(old.getFullYear() - 5);
+
+    expect(recencyScore(recent.toISOString().slice(0, 10))).toBeGreaterThan(
+      recencyScore(old.toISOString().slice(0, 10))
+    );
+    expect(recencyScore("")).toBe(1);
+    expect(recencyScore("날짜아님")).toBe(1);
   });
 });

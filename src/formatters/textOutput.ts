@@ -9,6 +9,7 @@
  * 이전 결과를 그대로 돌려받아야 하기 때문이다.
  */
 
+import { TOTAL_MAX, RELEVANCE_MAX, QUALITY_MAX } from "../config/scoringConfig.js";
 import type {
   DatasetType,
   Recommendation,
@@ -62,7 +63,7 @@ const RECOMMENDATION_HEADERS = [
   "최종갱신",
   "제공기관",
   "담당부서",
-  "점수",
+  `점수(${TOTAL_MAX}점 만점)`,
 ];
 
 function recommendationRows(items: Recommendation[]): string[][] {
@@ -74,7 +75,7 @@ function recommendationRows(items: Recommendation[]): string[][] {
     cell(r.lastUpdated),
     cell(r.provider),
     cell(r.department),
-    String(r.score),
+    `${r.score}/${TOTAL_MAX}`,
   ]);
 }
 
@@ -87,13 +88,20 @@ function recommendationNotes(items: Recommendation[]): string {
       if (r.organization?.label) facts.push(r.organization.label);
       if (r.scoreBreakdown) {
         facts.push(
-          `관련도 ${r.scoreBreakdown.relevanceScore} · 활용도 ${r.scoreBreakdown.qualityScore}`
+          `관련도 ${r.scoreBreakdown.relevanceScore}/${RELEVANCE_MAX}` +
+            ` · 활용도 ${r.scoreBreakdown.qualityScore}/${QUALITY_MAX}`
         );
       }
 
       const lines = [`**${i + 1}. ${r.title}**`];
       if (facts.length > 0) lines.push(`- ${facts.join(" · ")}`);
       if (r.reason?.trim()) lines.push(`- ${r.reason.trim()}`);
+
+      // 왜 이 점수인지 — 관련도 근거를 그대로 노출해 추천을 검증 가능하게 한다
+      const relevanceReasons = r.scoreBreakdown?.relevanceReasons ?? [];
+      if (relevanceReasons.length > 0) {
+        lines.push(`- 관련도 근거: ${relevanceReasons.join(" / ")}`);
+      }
       return lines.join("\n");
     })
     .join("\n\n");
@@ -119,7 +127,8 @@ export function formatRecommendations(output: RecommendOutput): string {
 
   parts.push(
     "> 📋 아래 표를 요약하지 말고 **점수·담당부서·갱신주기 열을 그대로 유지**해 사용자에게 보여주세요. " +
-      "점수는 왜 이 데이터가 추천됐는지 판단하는 핵심 근거입니다."
+      `점수는 질문 관련도 ${RELEVANCE_MAX}점 + 데이터 활용도 ${QUALITY_MAX}점 = ${TOTAL_MAX}점 만점이며, ` +
+      "왜 이 데이터가 추천됐는지 판단하는 핵심 근거입니다."
   );
   parts.push(table(RECOMMENDATION_HEADERS, recommendationRows(recommendations)));
   parts.push(recommendationNotes(recommendations));

@@ -241,7 +241,7 @@ export async function recommendSeoulApisForIdea(
     coreKeywords,
     apiOnly,
     realtimePreferred: effectiveRealtime,
-    orgFilterApplied: Boolean(explicitOrg),
+    orgFilter: explicitOrg,
   }).slice(0, limit);
 
   const output: RecommendOutput = {
