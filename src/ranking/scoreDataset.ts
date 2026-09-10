@@ -258,7 +258,7 @@ function relevanceBreakdown(
   const criteria: Criterion[] = [];
   const keywordMatch = matchKeywords(dataset, rc.keywordStats);
 
-  // 1. 키워드 일치 (47) — IDF 가중 커버리지
+  // 1. 키워드 일치 (44) — IDF 가중 커버리지
   if (keywordMatch.applicable) {
     const earned = RELEVANCE_WEIGHTS.keyword * keywordMatch.ratio;
     criteria.push({
@@ -273,7 +273,7 @@ function relevanceBreakdown(
     });
   }
 
-  // 2. 정책분야(BRM) 일치 (6) — 질의에서 분야가 추론될 때만.
+  // 2. 정책분야(BRM) 일치 (10) — 질의에서 분야가 추론될 때만.
   // 분야가 미분류인 데이터는 판정 근거가 없으므로 항목 자체를 적용하지 않는다
   // (없는 정보를 이유로 감점하지 않는다).
   const primaryField = dataset.brm?.primary ?? null;
@@ -318,7 +318,7 @@ function relevanceBreakdown(
     });
   }
 
-  // 5. 제공기관 조건 일치 (3) — 제공기관을 지정했을 때만
+  // 5. 제공기관 조건 일치 (4) — 제공기관을 지정했을 때만
   if (rc.orgFilter) {
     const hit = `${dataset.provider} ${dataset._raw?.mngStationName ?? ""}`.includes(
       rc.orgFilter
