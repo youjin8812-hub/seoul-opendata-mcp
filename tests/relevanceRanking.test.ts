@@ -42,7 +42,7 @@ describe("관련도가 활용도를 이긴다", () => {
     expect(ranked[0]!.title).toBe("서울시 그늘막 설치 위치 정보");
   });
 
-  it("활용도만으로는 관련도 격차를 뒤집을 수 없다 (활용도 30 < 관련도 65)", () => {
+  it("활용도만으로는 관련도 격차를 뒤집을 수 없다 (활용도 30 < 관련도 70)", () => {
     const ranked = scoreAndRank(
       [
         // 활용도 만점에 가까운 후보 — 유사어 하나에만 걸린다
@@ -170,14 +170,48 @@ describe("자치구 지역 조건", () => {
     expect(ranked[0]!.title).toBe("강남구 공영주차장 정보");
   });
 
-  it("자치구를 지목하지 않은 질의에서는 지역 배점이 순위에 개입하지 않는다", () => {
+  it("자치구를 지목하지 않으면 서울시 전체 데이터를 자치구 데이터보다 우대한다", () => {
     const ranked = scoreAndRank(
-      datasets,
+      [...datasets, makeDataset({ id: "OA-city", title: "서울시 공영주차장 정보", field: "교통" })],
       ctx({ keywords: ["주차장"], coreKeywords: ["주차장"] })
     );
 
-    // 조건이 동일하므로 두 자치구 데이터가 같은 점수를 받아야 한다
-    expect(ranked[0]!.score).toBe(ranked[1]!.score);
+    // 한 구만 담은 데이터보다 시 전체를 포괄하는 데이터가 먼저다
+    expect(ranked[0]!.title).toBe("서울시 공영주차장 정보");
+  });
+
+  it("같은 주제를 여러 자치구가 등재하면 뒤쪽을 체감시켜 목록을 낭비하지 않는다", () => {
+    // 25개 자치구가 같은 데이터를 각자 올리는 이 카탈로그 특유의 상황
+    const ranked = scoreAndRank(
+      [
+        ...datasets,
+        makeDataset({
+          id: "OA-mapo",
+          title: "마포구 공영주차장 정보",
+          provider: "마포구",
+          division: "자치구 및 자치구산하",
+          field: "교통",
+        }),
+      ],
+      ctx({ keywords: ["주차장"], coreKeywords: ["주차장"] })
+    );
+
+    expect(ranked).toHaveLength(3);
+    // 감추지는 않는다 — 특정 자치구를 찾는 사용자에게는 그 구의 데이터가 답이다
+    expect(ranked[0]!.score).toBeGreaterThan(ranked[1]!.score);
+    expect(ranked[1]!.score).toBeGreaterThan(ranked[2]!.score);
+    expect(ranked[2]!.scoreBreakdown!.relevanceReasons.join(" ")).toContain("중복 체감");
+  });
+
+  it("자치구를 지목하면 자치구별 비교를 원한 것이므로 중복 체감을 적용하지 않는다", () => {
+    const ranked = scoreAndRank(
+      datasets,
+      ctx({ keywords: ["강남구", "주차장"], coreKeywords: ["강남구", "주차장"] })
+    );
+
+    expect(ranked.every((r) => !r.scoreBreakdown!.relevanceReasons.join(" ").includes("중복 체감"))).toBe(
+      true
+    );
   });
 });
 

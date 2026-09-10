@@ -98,7 +98,7 @@ export interface NormalizedDataset {
   /** 최종갱신일자 (YYYY-MM-DD, 점수화 최신성 계산용) */
   lastUpdated: string;
   detailUrl: string;
-  /** 소분류 등에서 파생된 태그 */
+  /** 소분류에서 파생된 태그 — brm.primary의 사본이며 점수화에는 쓰지 않는다 */
   tags: string[];
   /** 제공 주체 구분 (예: "서울시(본청)", "서울시(산하기관)", "자치구 및 자치구산하") */
   division: string;
@@ -133,13 +133,13 @@ export interface Recommendation {
 }
 
 /**
- * 점수 내역 — 총점 95점 = 관련도 65 + 활용도 30.
+ * 점수 내역 — 총점 100점 = 관련도 70 + 활용도 30.
  * totalScore === relevanceScore + qualityScore === Recommendation.score 가 항상 성립한다.
  */
 export interface ScoreBreakdown {
-  /** 총점 (0~95) — Recommendation.score와 같은 값 */
+  /** 총점 (0~100) — Recommendation.score와 같은 값 */
   totalScore: number;
-  /** 질문 관련도 (0~65) */
+  /** 질문 관련도 (0~70) */
   relevanceScore: number;
   /** 데이터 활용도 (0~30) */
   qualityScore: number;

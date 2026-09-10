@@ -15,6 +15,15 @@ const STOP_WORDS = new Set([
   "알려줘", "보여줘", "추천", "좋은", "좋은데", "정도", "수준", "것",
   "거", "때", "후", "전", "중", "내", "외", "안", "밖", "위", "아래",
   "아이디어", "기획", "과제", "사업", "분석기획", "제안",
+  // 질문 말투에만 등장하는 말. 남겨 두면 같은 뜻을 다르게 물었을 때
+  // 검색 키워드 자체가 달라져 결과가 흔들린다.
+  "있는지", "되는지", "인지", "건지", "것들", "좀", "혹시",
+  "그리고", "또는", "등등", "같은", "관한", "대한", "대해",
+  "데이터셋", "목록", "리스트", "자료", "현행",
+  // 장소를 가리키지만 주제가 아닌 말 — 공간 조건은 지역 배점이 따로 다룬다
+  "지역", "일대", "인근", "주변", "근처", "쪽",
+  // "보고 싶어"의 '보고' — 합성어("업무보고")는 다른 토큰이라 그대로 살아남는다
+  "보고", "보려", "쓰려", "쓸",
 ]);
 
 /**
@@ -25,10 +34,25 @@ const STOP_WORDS = new Set([
 const REQUEST_VERB_PREFIXES = [
   "만들", "만드", "추천", "알려", "찾아", "보여", "뽑아", "골라", "구해",
   "해줘", "해주", "주세요", "부탁", "필요", "싶어", "싶다", "하고싶",
+  // 질문형 어미 — "있을까", "없나", "가능한가" 같은 변형까지 한 번에 걸러낸다
+  "있을", "있나", "없나", "될까", "가능", "궁금", "쓸만", "쓸 수",
 ];
 
-function isRequestVerb(token: string): boolean {
-  return REQUEST_VERB_PREFIXES.some((p) => token.startsWith(p));
+/**
+ * 의문사 — 활용형이 많아 완전일치로는 못 잡는다.
+ * "어떤지"·"어떤가"·"어디에"·"얼마나"를 접두 판정 하나로 전부 걸러낸다.
+ */
+const QUESTION_WORD_PREFIXES = [
+  "어디", "어떤", "어떻", "어느", "언제", "누가", "누구",
+  "무엇", "무슨", "뭐", "뭔", "얼마", "몇", "왜",
+];
+
+/** 주제어가 아닌 토큰 — 요청 동사류이거나 의문사 */
+function isNonTopicToken(token: string): boolean {
+  return (
+    REQUEST_VERB_PREFIXES.some((p) => token.startsWith(p)) ||
+    QUESTION_WORD_PREFIXES.some((p) => token.startsWith(p))
+  );
 }
 
 /** 도메인 키워드 사전 — 입력 텍스트에 포함되면 관련 검색어를 추가한다 */
@@ -127,22 +151,75 @@ const DOMAIN_EXPANSIONS: Record<string, string[]> = {
   격자: ["250m"],
 };
 
-/** 실시간성 관련 키워드 */
+/**
+ * 실시간성을 요구하는 말.
+ *
+ * "현황"은 일부러 뺐다. 서울 열린데이터광장은 서비스명 상당수가 "○○ 현황"이고
+ * 사용자도 "무더위쉼터 현황"처럼 그냥 '자료'라는 뜻으로 쓴다. 이걸 실시간 요구로
+ * 읽으면 "따릉이 대여소 현황"과 "따릉이 대여소 관련 데이터"가 서로 다른 질의가 되어,
+ * 같은 뜻인데 다른 추천이 나온다. 같은 이유로 "최근"·"요즘"도 뺐다 — 그건 최신성이지
+ * 실시간이 아니다.
+ */
 const REALTIME_KEYWORDS = new Set([
-  "실시간", "현재", "즉시", "바로", "라이브", "live", "현황",
+  "실시간", "현재", "즉시", "바로", "라이브", "live",
+  // 같은 요구를 다르게 말한 표현들 — "지금 몇 대 있는지"도 실시간 요구다
+  "지금", "오늘", "당장", "수시로",
 ]);
 
 /**
- * 카탈로그 전반에 흔히 등장해 변별력이 낮은 범용 명사.
- * 예: "지하철 실시간 열차 위치정보"는 "위치"·"실시간"만으로 도메인 40점을 다 채워,
- * "따릉이 대여소 위치와 실시간 현황" 질의에서 따릉이와 무관한데도 최상위에 올라왔다.
- * 검색 재현율은 유지하되(keywords에는 남김) 점수화에서는 coreKeywords가 아닌
- * expandedKeywords로 취급해 원문 키워드보다 낮은 가중치(title 7·tag 3·body 2)를 준다.
+ * 카탈로그 전반에 흔히 등장해 변별력이 없는 범용 명사 — 키워드에서 아예 뺀다.
+ *
+ * 두 가지 이유다.
+ *   1) 변별력이 없다. "현황"·"정보"는 서울 열린데이터광장 서비스명 명명 관행상
+ *      거의 모든 데이터에 붙어 있어서, 검색어로도 점수 근거로도 쓸모가 없다.
+ *   2) 표현마다 붙었다 떨어졌다 한다. "따릉이 대여소 현황"과 "따릉이 대여소 관련 데이터"는
+ *      같은 질의인데, 이 말들을 키워드에 남기면 두 질의의 후보군과 IDF 가중이 갈라져
+ *      같은 뜻인데 다른 답이 나온다.
+ *
+ * 실시간 계열은 여기서 빠지더라도 isRealtimeHinted로 따로 전달되므로 의미가 사라지지 않는다.
  */
 const GENERIC_CORE_TERMS = new Set([
   ...REALTIME_KEYWORDS,
-  "위치", "정보", "상태", "자료", "현행",
+  "현황", "위치", "정보", "상태", "자료", "현행", "최근", "요즘", "내역", "실태",
 ]);
+
+/**
+ * 사전이 아는 말 — 모호한 조사를 뗄지 판단하는 기준이 된다.
+ */
+const KNOWN_TERMS = new Set<string>([
+  ...STOP_WORDS,
+  ...GENERIC_CORE_TERMS,
+  ...Object.keys(DOMAIN_EXPANSIONS),
+]);
+
+/** 한글 음절에 받침이 있는지 — 주격조사 '이/가'를 가리는 데 쓴다 */
+function hasFinalConsonant(syllable: string): boolean {
+  const code = syllable.charCodeAt(0) - 0xac00;
+  if (code < 0 || code > 11171) return false;
+  return code % 28 !== 0;
+}
+
+/**
+ * 주격조사 '이'·'가'를 뗀다. 둘 다 낱말의 일부이기도 해서 그냥 자르면 안 된다
+ * ("따릉이" → "따릉", "물가" → "물").
+ *
+ * 두 가지 근거를 쓴다.
+ *   '가' — 받침 없는 음절 뒤에만 조사로 붙는다. "대여소가"의 '소'는 받침이 없으니
+ *          조사가 맞고, "물가"의 '물'은 받침이 있으니 조사가 아니다.
+ *   '이' — 받침 있는 음절 뒤에 붙으므로 음운 규칙만으로는 "따릉이"와 "현황이"를
+ *          가릴 수 없다. 그래서 떼고 남은 말이 사전에 있는 말일 때만 뗀다.
+ */
+function stripAmbiguousEnding(token: string): string {
+  const stem = token.slice(0, -1);
+  if (stem.length < 2) return token;
+  const lastOfStem = stem[stem.length - 1] ?? "";
+
+  if (token.endsWith("가") && !hasFinalConsonant(lastOfStem)) return stem;
+  if (token.endsWith("이") && hasFinalConsonant(lastOfStem) && KNOWN_TERMS.has(stem)) {
+    return stem;
+  }
+  return token;
+}
 
 /** 단어 끝에 붙는 한국어 조사/어미를 제거 */
 const ENDINGS = [
@@ -150,11 +227,33 @@ const ENDINGS = [
   "에서도", "에서는", "에게서", "에게는", "에게도", "에게",
   "으로는", "으로도", "으로만", "로서는",
   "이라는", "이라고", "이라도",
+  // 보조사 — "몇 개나", "축제나 행사"처럼 붙는다. 떼고 나면 "개"는 한 글자라 자동으로 걸러지고
+  // "축제나"는 "축제"로 정리된다
+  "이나", "라도", "든지",
   "에서", "으로", "로", "에도", "에는", "부터", "까지",
   "하고", "이고", "이랑",
   "에서", "에는", "에도",
-  "을", "를", "은", "는", "의", "와", "과", "도",
+  "을", "를", "은", "는", "의", "와", "과", "도", "나", "씩",
 ];
+
+/**
+ * 조사가 아닌 접미사 — "대여소별 현황"과 "대여소 현황"은 같은 질의여야 한다.
+ *
+ * 다만 짧은 말에는 적용하지 않는다. "성별"에서 '별'을 떼면 '성'만 남아 뜻이 사라지고,
+ * "구별"·"월별"도 마찬가지다. 원본 4글자 이상이면서 떼고도 2글자 이상 남을 때만 자른다.
+ */
+const TRAILING_SUFFIXES = ["별", "들", "당"];
+const MIN_LENGTH_FOR_SUFFIX_STRIP = 4;
+
+function stripSuffix(token: string): string {
+  if (token.length < MIN_LENGTH_FOR_SUFFIX_STRIP) return token;
+  for (const suffix of TRAILING_SUFFIXES) {
+    if (token.endsWith(suffix) && token.length - suffix.length >= 2) {
+      return token.slice(0, token.length - suffix.length);
+    }
+  }
+  return token;
+}
 
 function stripEndings(token: string): string {
   let result = token;
@@ -176,7 +275,7 @@ function tokenize(text: string): string[] {
   return text
     .replace(/[^\uAC00-\uD7A3\u1100-\u11FF\u3130-\u318F\w\s]/g, " ")
     .split(/\s+/)
-    .map((t) => stripEndings(t.trim()))
+    .map((t) => stripSuffix(stripAmbiguousEnding(stripEndings(t.trim()))))
     .filter((t) => t.length >= 2);
 }
 
@@ -210,6 +309,31 @@ function matchDictionaryKeys(token: string): string[] {
 }
 
 /**
+ * 키워드를 정규 순서로 정렬한다 — 질의 표현이 달라도 같은 결과를 내기 위한 장치.
+ *
+ * 정렬하지 않으면 키워드 배열이 문장에서 단어가 나온 순서를 그대로 따른다.
+ * 그런데 이 배열의 앞쪽 8개만 카탈로그를 검색하므로, "따릉이 대여소 현황"과
+ * "대여소별 따릉이 현황"이 서로 다른 후보군을 만들고, 후보군이 다르면 IDF 가중과
+ * 점수까지 달라진다. 같은 뜻인데 답이 흔들리는 것이다.
+ *
+ * 그래서 의미에만 의존하는 기준으로 세운다.
+ *   1) 긴 말 먼저 — 한국어 합성어는 길수록 구체적이다 (무더위쉼터 > 쉼터, 그늘막 > 그늘).
+ *      구체적인 말일수록 검색이 정확하고 변별력도 높으므로 먼저 검색해야 한다.
+ *   2) 같은 길이면 가나다순 — 남은 동률을 완전히 없앤다.
+ */
+export function canonicalizeKeywords(keywords: string[]): string[] {
+  const seen = new Set<string>();
+  const unique: string[] = [];
+  for (const raw of keywords) {
+    const k = raw.trim();
+    if (!k || seen.has(k)) continue;
+    seen.add(k);
+    unique.push(k);
+  }
+  return unique.sort((a, b) => b.length - a.length || a.localeCompare(b, "ko"));
+}
+
+/**
  * 아이디어 텍스트에서 핵심 키워드를 추출한다.
  * @param ideaText 사용자 자연어 입력
  * @param domainHint 사용자가 명시한 도메인 힌트 (선택)
@@ -220,29 +344,27 @@ export function extractKeywords(
 ): ExtractedKeywords {
   const tokens = tokenize(ideaText);
 
-  // 불용어 + 요청 동사류("만들게", "추천해줘") 제거
-  const filtered = tokens.filter((t) => !STOP_WORDS.has(t) && !isRequestVerb(t));
+  // 불용어 + 요청 동사류("만들게", "추천해줘") + 범용어("현황"·"정보") 제거.
+  // 범용어를 여기서 빼야 유사어 확장의 출발점으로도 쓰이지 않는다 —
+  // "위치"를 남겨 두면 사전이 "좌표"·"지도"까지 끌어와 질의가 통째로 달라진다.
+  const filtered = tokens.filter(
+    (t) => !STOP_WORDS.has(t) && !isNonTopicToken(t) && !GENERIC_CORE_TERMS.has(t)
+  );
 
   // 실시간 힌트 감지
   const isRealtimeHinted = tokens.some((t) => REALTIME_KEYWORDS.has(t));
 
-  // 범용 명사("위치"·"실시간"·"현황" 등)는 검색 재현율을 위해 남기되,
-  // 도메인 무관 데이터가 원문 키워드급 가중치로 오르지 않도록 core에서 제외한다.
-  const core = new Set<string>();
+  const core = new Set<string>(filtered);
   const expanded = new Set<string>();
-  for (const t of filtered) {
-    if (GENERIC_CORE_TERMS.has(t)) expanded.add(t);
-    else core.add(t);
-  }
 
   /** 토큰 하나를 사전 표제어에 연결하고 유사어를 확장한다 */
   const expandToken = (token: string, limit = Infinity) => {
     for (const key of matchDictionaryKeys(token)) {
       // 표제어 자체도 검색어로 쓸모가 있다 ("그늘맵"→"그늘")
-      if (!core.has(key)) expanded.add(key);
+      if (!core.has(key) && !GENERIC_CORE_TERMS.has(key)) expanded.add(key);
       const expansions = DOMAIN_EXPANSIONS[key] ?? [];
       for (const e of expansions.slice(0, limit)) {
-        if (!core.has(e)) expanded.add(e);
+        if (!core.has(e) && !GENERIC_CORE_TERMS.has(e)) expanded.add(e);
       }
     }
   };
@@ -252,7 +374,7 @@ export function extractKeywords(
   // 도메인 힌트 추가
   if (domainHint) {
     const hintTokens = tokenize(domainHint).filter(
-      (t) => !STOP_WORDS.has(t) && !isRequestVerb(t)
+      (t) => !STOP_WORDS.has(t) && !isNonTopicToken(t)
     );
     hintTokens.forEach((t) => {
       core.add(t);
@@ -260,9 +382,10 @@ export function extractKeywords(
     });
   }
 
-  // 원문 키워드를 앞에 배치해 검색 쿼리 우선순위를 확보한다
-  const coreKeywords = [...core].slice(0, MAX_KEYWORDS);
-  const expandedKeywords = [...expanded]
+  // 원문 키워드를 앞에 배치해 검색 쿼리 우선순위를 확보하되,
+  // 문장에서 나온 순서가 아니라 정규 순서로 정렬한다 (아래 canonicalizeKeywords 참고)
+  const coreKeywords = canonicalizeKeywords([...core]).slice(0, MAX_KEYWORDS);
+  const expandedKeywords = canonicalizeKeywords([...expanded])
     .filter((e) => !coreKeywords.includes(e))
     .slice(0, Math.max(0, MAX_KEYWORDS - coreKeywords.length));
 

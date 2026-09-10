@@ -31,12 +31,11 @@ import {
   SHORT_KEYWORD_LENGTH,
 } from "../config/scoringConfig.js";
 
-export type MatchPosition = "title" | "tag" | "body";
+export type MatchPosition = "title" | "body";
 
 /** 데이터셋에서 매칭 대상이 되는 텍스트를 위치별로 분리한 형태 */
 export interface DatasetText {
   title: string;
-  tag: string;
   body: string;
 }
 
@@ -53,11 +52,11 @@ export interface KeywordStat {
 export interface KeywordMatchResult {
   /** 0~1 — 변별력 기준 질의 충족률 */
   ratio: number;
-  /** 제목·태그에 걸린 키워드 수 (본문 매칭은 세지 않는다) */
+  /** 제목에 걸린 키워드 수 (본문 매칭은 세지 않는다) */
   strongHits: number;
   /**
-   * 질의의 주요 키워드(가장 변별력 있는 키워드급)를 하나라도 제목·태그에서
-   * 맞췄는지. 범용어만 여러 개 맞아 커버리지가 올라간 경우를 걸러낸다.
+   * 질의의 주요 키워드(가장 변별력 있는 키워드급)를 하나라도 제목에서 맞췄는지.
+   * 범용어만 여러 개 맞아 커버리지가 올라간 경우를 걸러낸다.
    */
   primaryHit: boolean;
   /** 실제로 매칭된 키워드 (제목 매칭 우선 정렬) */
@@ -73,10 +72,10 @@ export function datasetText(dataset: NormalizedDataset): DatasetText {
   const cached = textCache.get(dataset);
   if (cached) return cached;
 
+  // 소분류(정책분야)는 일부러 넣지 않는다 — 정책분야 배점이 그 축을 전담하므로,
+  // 여기에 두면 같은 근거로 키워드 점수와 분야 점수를 이중으로 주게 된다.
   const value: DatasetText = {
     title: dataset.title.toLowerCase(),
-    // 태그는 카탈로그 소분류(정책분야)에서 온다 — 주제를 나타내는 공식 값이다
-    tag: [...dataset.tags, dataset.brm?.primary ?? ""].join(" ").toLowerCase(),
     body: [
       dataset.description,
       dataset.provider,
@@ -91,7 +90,7 @@ export function datasetText(dataset: NormalizedDataset): DatasetText {
   return value;
 }
 
-/** 키워드가 걸린 가장 강한 위치 하나를 반환한다 (제목 > 태그 > 본문) */
+/** 키워드가 걸린 가장 강한 위치 하나를 반환한다 (제목 > 본문) */
 export function findMatchPosition(
   text: DatasetText,
   keyword: string
@@ -99,7 +98,6 @@ export function findMatchPosition(
   const k = keyword.toLowerCase();
   if (!k) return null;
   if (text.title.includes(k)) return "title";
-  if (text.tag.includes(k)) return "tag";
   // 2글자 이하 키워드는 제공기관·부서명에 우연히 걸리는 경우가 많아 본문을 보지 않는다
   if (k.length > SHORT_KEYWORD_LENGTH && text.body.includes(k)) return "body";
   return null;
@@ -218,8 +216,7 @@ export function matchKeywords(
 
     strongHits++;
     if (stat.weight >= primaryThreshold) primaryHit = true;
-    if (position === "title") titleHits.push(stat.keyword);
-    else otherHits.push(stat.keyword);
+    titleHits.push(stat.keyword);
   }
 
   const decayed = (values: number[]): number =>

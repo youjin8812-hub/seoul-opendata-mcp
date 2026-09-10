@@ -113,7 +113,7 @@ describe("scoreAndRank", () => {
     }
   });
 
-  it("총점은 관련도 + 활용도와 정확히 일치한다 (95점 만점)", () => {
+  it("총점은 관련도 + 활용도와 정확히 일치한다 (100점 만점)", () => {
     const datasets = [
       makeDataset({ id: "1", title: "축제 API", type: "API", description: "축제 행사 정보" }),
     ];
@@ -227,7 +227,7 @@ describe("유사어 확장 대응 — 희석 방지와 관련도 게이트", () 
     expect(ranked[0]!.title).toBe("서울시 그늘막 설치 위치 정보");
   });
 
-  it("질의 조건을 온전히 충족하면 관련도 만점(65)에 도달한다", () => {
+  it("질의 조건을 온전히 충족하면 관련도 만점(70)에 도달한다", () => {
     const dataset = makeDataset({ id: "t", title: "서울시 그늘막 설치 위치 정보" });
     const [scored] = scoreAndRank([dataset], {
       keywords: ["그늘막"],
@@ -335,5 +335,72 @@ describe("활용도 세부 점수", () => {
     );
     expect(recencyScore("")).toBe(1);
     expect(recencyScore("날짜아님")).toBe(1);
+  });
+});
+
+describe("총점 상한 — 어떤 조합으로도 만점을 넘지 않는다", () => {
+  // 옛 구조에는 95점 위에 얹히는 실시간 가산점(+8)이 있어 실제로는 최대 103점이
+  // 나왔다. "95점 만점"이라고 적어 놓고 103점을 표에 찍는 셈이었고, 질의마다
+  // 척도가 달라져 두 결과를 나란히 놓으면 그대로 오독으로 이어졌다.
+  // 지금은 가산 항목이 없지만, 나중에 항목을 추가할 때 조용히 넘어가지 않도록 못을 박는다.
+  const types = ["API", "FILE", "UNKNOWN"] as const;
+  const cycles = ["실시간", "일간", "수시", "주간", "월간", "분기별", "연간", "주기없음", ""];
+
+  it("모든 형태·주기·조건 조합에서 0 이상 100 이하다", () => {
+    const datasets = types.flatMap((type) =>
+      cycles.map((updateCycle, i) =>
+        makeDataset({
+          id: `${type}-${i}`,
+          title: "서울시 따릉이 대여소 실시간 위치 정보",
+          type,
+          updateCycle,
+          lastUpdated: new Date().toISOString().slice(0, 10),
+          _raw: {
+            infId: `OA-${type}-${i}`,
+            infNm: "서울시 따릉이 대여소 실시간 위치 정보",
+            cateNm: "공공데이터",
+            ditcNm: "서울시(본청)",
+            mapCateNm: "교통",
+            mngOrganName: "서울특별시",
+            mngStationName: "자전거정책과",
+            linkDesc: "따릉이시스템",
+            linkInfo: "",
+            managerName: "홍길동",
+            managerPhone: "02-000-0000",
+            chngLoadNm: updateCycle,
+            dataLtNm: new Date().toISOString().slice(0, 10),
+            srvType: "File,Sheet,Api",
+            shortUrl: "https://data.seoul.go.kr/x",
+          },
+          brm: {
+            primary: "교통",
+            secondary: null,
+            code: null,
+            source: "catalog_map_category",
+            confidence: "high",
+          },
+        })
+      )
+    );
+
+    for (const realtimePreferred of [true, false]) {
+      for (const orgFilter of ["", "서울특별시"]) {
+        const ranked = scoreAndRank(datasets, {
+          keywords: ["따릉이", "대여소", "자전거", "공공자전거"],
+          coreKeywords: ["따릉이", "대여소"],
+          apiOnly: false,
+          realtimePreferred,
+          orgFilter: orgFilter || undefined,
+        });
+
+        for (const rec of ranked) {
+          expect(rec.score).toBeGreaterThanOrEqual(0);
+          expect(rec.score).toBeLessThanOrEqual(TOTAL_MAX);
+          expect(rec.scoreBreakdown!.relevanceScore).toBeLessThanOrEqual(RELEVANCE_MAX);
+          expect(rec.scoreBreakdown!.qualityScore).toBeLessThanOrEqual(QUALITY_MAX);
+          expect(rec.scoreBreakdown!.totalScore).toBe(rec.score);
+        }
+      }
+    }
   });
 });

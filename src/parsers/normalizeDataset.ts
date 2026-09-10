@@ -30,7 +30,9 @@ export function normalizeDataset(raw: RawSeoulCatalogItem): NormalizedDataset {
     updateCycle: raw.chngLoadNm || "미확인",
     lastUpdated: raw.dataLtNm || "",
     detailUrl: raw.shortUrl || "https://data.seoul.go.kr",
-    // 소분류(정책분야)를 태그처럼 활용해 도메인 매칭 점수에 반영
+    // 소분류(정책분야)는 brm이 정식 분류로 들고 있다. tags는 그 사본으로,
+    // 점수화에는 쓰지 않는다 — 키워드 매칭에 넣으면 소분류 하나로 키워드 점수와
+    // 정책분야 점수를 이중으로 주게 되기 때문이다.
     tags: raw.mapCateNm ? [raw.mapCateNm] : [],
     division: raw.ditcNm || "",
     brm: classifyBrm(raw),

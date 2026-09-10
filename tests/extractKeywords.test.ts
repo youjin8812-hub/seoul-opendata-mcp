@@ -7,8 +7,11 @@ describe("extractKeywords", () => {
       "대한민국 지역 축제 시작 전에 알림을 주는 앱을 만들고 싶어"
     );
     expect(keywords).toContain("축제");
-    expect(keywords).toContain("지역");
     expect(keywords).toContain("알림");
+    // "지역"은 주제가 아니라 공간을 가리키는 말이라 키워드에서 뺀다.
+    // 카탈로그 어휘 색인도 "지역"을 변별력 없는 범용어로 분류하고 있고,
+    // 공간 조건은 지역 배점(자치구 판정)이 따로 다룬다.
+    expect(keywords).not.toContain("지역");
   });
 
   it("도메인 확장이 동작한다 — 축제 → 행사 추가", () => {

@@ -76,7 +76,7 @@ const MIN_HITS = 2;
 const MAX_FIELDS = 2;
 
 /**
- * 질의 키워드에서 정책분야를 추론한다.
+ * 질의 키워드에서 정책분야를 추론한다 (사전 기반).
  * @param keywords 원문 + 확장 유사어
  * @param coreKeywords 사용자 입력에 실제로 등장한 키워드
  */
@@ -115,4 +115,61 @@ export function inferQueryPolicyFields(
   // 환경(폭염·가로수·녹지)이다. 유사어를 늘렸다는 이유만으로 한쪽 분야가 탈락하면,
   // 정작 그 분야로 등록된 정답 데이터가 감점된다.
   return qualified.slice(0, MAX_FIELDS).map(([field]) => field);
+}
+
+// ─── 후보군 분포 기반 추론 ────────────────────────────────────────────────────
+
+/** 후보군 분포에서 분야를 채택하는 최소 점유율 */
+const MIN_SHARE = 0.3;
+
+/**
+ * 분포를 믿기 위한 최소 표본 수.
+ * 두세 건짜리 후보군에서는 한 건만 달라도 점유율이 50%씩 튀어 분포가 근거가 되지 못한다.
+ */
+const MIN_POOL_SAMPLE = 5;
+
+/**
+ * 질의어를 제목에 담은 후보들이 실제로 어느 분야에 등재돼 있는지로 분야를 추론한다.
+ *
+ * 사전은 사람이 계속 채워 넣어야 하고 신조어를 모른다("그늘맵"). 반면 카탈로그의
+ * 소분류는 8,255건 전 건이 채워진 공식 값이라, 질의어가 걸린 데이터들의 분야 분포가
+ * 곧 "이 질의가 어느 분야를 찾는 질문인가"에 대한 카탈로그 자신의 답이다.
+ *
+ * @param matchedFields 질의어를 제목에서 맞춘 후보들의 정책분야 (미분류는 제외하고 넘긴다)
+ */
+export function inferPolicyFieldsFromPool(
+  matchedFields: BrmPrimaryCategory[]
+): BrmPrimaryCategory[] {
+  if (matchedFields.length < MIN_POOL_SAMPLE) return [];
+
+  const counts = new Map<BrmPrimaryCategory, number>();
+  for (const field of matchedFields) {
+    counts.set(field, (counts.get(field) ?? 0) + 1);
+  }
+
+  return [...counts.entries()]
+    .filter(([, count]) => count / matchedFields.length >= MIN_SHARE)
+    .sort((a, b) => b[1] - a[1] || ALL_FIELDS.indexOf(a[0]) - ALL_FIELDS.indexOf(b[0]))
+    .slice(0, MAX_FIELDS)
+    .map(([field]) => field);
+}
+
+/**
+ * 사전 추론과 후보군 분포 추론을 합친다.
+ * 사전이 확실히 아는 분야를 앞에 두고, 사전이 비어 있거나 자리가 남으면 분포로 채운다.
+ */
+export function resolvePolicyFields(
+  keywords: string[],
+  coreKeywords: string[] | undefined,
+  matchedFields: BrmPrimaryCategory[]
+): BrmPrimaryCategory[] {
+  const merged: BrmPrimaryCategory[] = [];
+  for (const field of [
+    ...inferQueryPolicyFields(keywords, coreKeywords),
+    ...inferPolicyFieldsFromPool(matchedFields),
+  ]) {
+    if (!merged.includes(field)) merged.push(field);
+    if (merged.length >= MAX_FIELDS) break;
+  }
+  return merged;
 }

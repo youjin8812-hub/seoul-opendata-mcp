@@ -9,7 +9,7 @@ import type {
   NormalizedDataset,
   KeywordSources,
 } from "../types/index.js";
-import { extractKeywords } from "../parsers/extractKeywords.js";
+import { extractKeywords, canonicalizeKeywords } from "../parsers/extractKeywords.js";
 import { searchSeoulCatalog, getServiceKey } from "../services/seoulCatalogService.js";
 import { normalizeDatasets, deduplicateDatasets } from "../parsers/normalizeDataset.js";
 import { scoreAndRank } from "../ranking/scoreDataset.js";
@@ -125,16 +125,6 @@ export async function recommendSeoulApisForIdea(
 
   const clientSynonyms = sanitizeSynonyms(synonyms);
 
-  const cacheKey = normalizeCacheKey(
-    `${ideaText}|${apiOnly}|${realtimePreferred}|${domainHint ?? ""}|${limit}|${orgName ?? ""}|${division ?? ""}|${clientSynonyms.join(",")}`
-  );
-
-  const cached = resultCache.get(cacheKey);
-  if (cached) {
-    logger.info("캐시 히트", { cacheKey });
-    return cached;
-  }
-
   // 1. 키워드 추출 — 규칙 기반 사전 확장
   const {
     coreKeywords,
@@ -142,6 +132,27 @@ export async function recommendSeoulApisForIdea(
     isRealtimeHinted,
   } = extractKeywords(ideaText, domainHint);
   const effectiveRealtime = realtimePreferred || isRealtimeHinted;
+
+  // 캐시 키는 원문이 아니라 추출된 의미(정규 키워드 + 조건)로 잡는다.
+  // "따릉이 대여소 현황"과 "대여소별 따릉이 현황 알려줘"는 같은 질의이므로
+  // 같은 결과를 돌려줘야 하고, 캐시가 그 일관성을 한 번 더 보장한다.
+  const cacheKey = normalizeCacheKey(
+    [
+      coreKeywords.join(","),
+      canonicalizeKeywords(clientSynonyms).join(","),
+      apiOnly,
+      effectiveRealtime,
+      limit,
+      orgName ?? "",
+      division ?? "",
+    ].join("|")
+  );
+
+  const cached = resultCache.get(cacheKey);
+  if (cached) {
+    logger.info("캐시 히트", { cacheKey });
+    return cached;
+  }
 
   const serviceKey = getServiceKey();
 
@@ -170,7 +181,16 @@ export async function recommendSeoulApisForIdea(
 
   logger.info("추출된 키워드", { keywords, keywordSources, effectiveRealtime });
 
-  const searchQueries = keywords.slice(0, MAX_SEARCH_QUERIES);
+  // 검색할 키워드는 정규 순서(구체적인 말 먼저)로 고른다.
+  // 문장에 나온 순서대로 고르면 어순만 바뀌어도 후보군이 달라져 점수가 흔들린다.
+  const searchQueries = [
+    ...canonicalizeKeywords(keywordSources.core),
+    ...canonicalizeKeywords([
+      ...keywordSources.catalog,
+      ...keywordSources.client,
+      ...keywordSources.dictionary,
+    ]),
+  ].slice(0, MAX_SEARCH_QUERIES);
   if (searchQueries.length === 0) {
     searchQueries.push(ideaText.slice(0, 20));
   }

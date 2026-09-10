@@ -1,3 +1,4 @@
+import { classifyOrganization } from "../../src/classification/organizationType.js";
 import type { NormalizedDataset, RawSeoulCatalogItem, BrmPrimaryCategory } from "../../src/types/index.js";
 
 export interface DatasetSpec {
@@ -57,13 +58,9 @@ export function makeDataset(spec: DatasetSpec): NormalizedDataset {
     brm: field
       ? { primary: field, secondary: null, code: null, source: "catalog_map_category", confidence: "high" }
       : { primary: null, secondary: null, code: null, source: "unclassified", confidence: "low" },
-    organization: {
-      type: "headquarters",
-      label: "서울시 본청",
-      organizationName: provider,
-      source: "raw_division",
-      confidence: "high",
-    },
+    // 실제 분류기를 그대로 쓴다 — 자치구 데이터를 본청으로 위장한 픽스처로
+    // 시험하면 지역 배점·중복 체감이 검증되지 않는다
+    organization: classifyOrganization(raw),
     _raw: raw,
   };
 }
